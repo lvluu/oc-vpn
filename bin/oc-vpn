@@ -149,6 +149,7 @@ cmd_down() {
 }
 
 cmd_run() {
+  require_root
   local name="${1:-}"
 
   if [[ -z "$name" ]]; then
@@ -177,8 +178,13 @@ cmd_run() {
   echo -e "\033[2mPress Ctrl+C or type 'exit' to stop. Then: oc-vpn run <other-profile>\033[0m"
   echo ""
 
-  ip netns exec "$(ns_name "$name")" su - "$USER" -c "opencode" 2>/dev/null || \
-    ip netns exec "$(ns_name "$name")" opencode
+  local project_dir="$PWD"
+  local run_user="${SUDO_USER:-$USER}"
+  local user_home
+  user_home=$(getent passwd "$run_user" | cut -d: -f6)
+
+  # Run as real user with their full environment
+  ip netns exec "$(ns_name "$name")" su - "$run_user" -c "cd '${project_dir}' && exec opencode"
 
   echo ""
   info "Session ended. Tunnel '${name}' still running."
@@ -202,8 +208,8 @@ cmd_shell() {
   echo -e "\033[2mShell inside $(ns_name "$name") — all traffic routes through WireGuard.\033[0m"
   echo ""
 
-  ip netns exec "$(ns_name "$name")" su - "$USER" 2>/dev/null || \
-    ip netns exec "$(ns_name "$name")" /bin/bash
+  local run_user="${SUDO_USER:-$USER}"
+  ip netns exec "$(ns_name "$name")" su - "$run_user"
 }
 
 cmd_status() {
