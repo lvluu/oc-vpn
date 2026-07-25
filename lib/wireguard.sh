@@ -35,7 +35,7 @@ wg_up() {
   [[ -z "$private_key" || -z "$endpoint" || -z "$public_key" ]] && return 1
 
   # ── Create WireGuard interface ─────────────────────────────
-  ns_exec "$name" ip link add dev wg type wireguard
+  ns_exec "$name" ip link add dev wg0 type wireguard
 
   # Apply config via wg setconf — build a clean config with only wg-quick-agnostic fields
   local tmpconf; tmpconf=$(mktemp)
@@ -55,8 +55,8 @@ wg_up() {
 
   # ── Assign IP address ──────────────────────────────────────
   # Strip CIDR mask for ip addr (e.g., "10.104.8.99/32" → "10.104.8.99/32" kept as-is)
-  ns_exec "$name" ip addr add "$address" dev wg 2>/dev/null || true
-  ns_exec "$name" ip link set mtu 1420 up dev wg
+  ns_exec "$name" ip addr add "$address" dev wg0 2>/dev/null || true
+  ns_exec "$name" ip link set mtu 1420 up dev wg0
 
   # ── DNS setup ──────────────────────────────────────────────
   if [[ -n "$dns" ]] && command -v resolvconf &>/dev/null; then
