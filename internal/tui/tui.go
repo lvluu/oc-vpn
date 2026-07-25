@@ -9,9 +9,10 @@ import (
 	"strings"
 	"syscall"
 
+	"golang.org/x/term"
+
 	"github.com/lvluu/oc-vpn/internal/profiles"
 	"github.com/lvluu/oc-vpn/internal/wireguard"
-	"golang.org/x/term"
 )
 
 var reader = bufio.NewReader(os.Stdin)

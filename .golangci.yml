@@ -16,8 +16,8 @@ linters:
     - wastedassign
 
   disable:
-    - errname     # too noisy for this codebase
-    - exhaustruct # overkill for CLI tool structs
+    - errname
+    - exhaustruct
 
   settings:
     govet:
@@ -33,19 +33,23 @@ linters:
       disabled-checks:
         - hugeParam
         - rangeValCopy
-    goimports:
-      local-prefixes: github.com/lvluu/oc-vpn
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - unparam
+          - gocritic
 
 formatters:
   enable:
     - gofmt
     - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/lvluu/oc-vpn
 
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - unparam
-        - gocritic
