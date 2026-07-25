@@ -53,39 +53,17 @@ profile_import() {
   # Copy config
   cp "$conf_path" "${dir}/wg.conf"
 
-  # ── Rewrite config to prevent host route hijack ────────────
-  # Table = off → wg-quick won't touch host routing table
-  if grep -q "^Table\s*=" "${dir}/wg.conf"; then
-    sed -i 's/^Table\s*=.*/Table = off/' "${dir}/wg.conf"
-  else
-    sed -i '/^\[Interface\]/a Table = off' "${dir}/wg.conf"
-  fi
-
-  # SaveConfig = false → don't overwrite on shutdown
-  if grep -q "^SaveConfig\s*=" "${dir}/wg.conf"; then
-    sed -i 's/^SaveConfig\s*=.*/SaveConfig = false/' "${dir}/wg.conf"
-  else
-    sed -i '/^\[Interface\]/a SaveConfig = false' "${dir}/wg.conf"
-  fi
-
-  # DNS: keep if resolvconf is available, strip if not
-  if ! command -v resolvconf &>/dev/null; then
-    sed -i '/^DNS\s*=/d' "${dir}/wg.conf"
-  fi
-
-  # MTU override
-  if [[ -n "$mtu" ]]; then
-    if grep -q "^MTU\s*=" "${dir}/wg.conf"; then
-      sed -i "s/^MTU\s*=.*/MTU = ${mtu}/" "${dir}/wg.conf"
-    else
-      sed -i '/^\[Interface\]/a MTU = '"$mtu" "${dir}/wg.conf"
-    fi
-  fi
-
-  # DNS override
-  if [[ -n "$dns" ]]; then
-    echo "$dns" > "${dir}/dns"
-  fi
+  # ── Rewrite config for wg setconf compatibility ────────────
+  # Strip wg-quick-only fields that wg setconf doesn't understand
+  sed -i '/^Address\s*=/d' "${dir}/wg.conf"
+  sed -i '/^DNS\s*=/d' "${dir}/wg.conf"
+  sed -i '/^MTU\s*=/d' "${dir}/wg.conf"
+  sed -i '/^Table\s*=/d' "${dir}/wg.conf"
+  sed -i '/^SaveConfig\s*=/d' "${dir}/wg.conf"
+  sed -i '/^PreUp\s*=/d' "${dir}/wg.conf"
+  sed -i '/^PreDown\s*=/d' "${dir}/wg.conf"
+  sed -i '/^PostUp\s*=/d' "${dir}/wg.conf"
+  sed -i '/^PostDown\s*=/d' "${dir}/wg.conf"
 
   # Metadata
   local endpoint
