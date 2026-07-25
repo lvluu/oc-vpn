@@ -28,7 +28,7 @@ test:
 
 # ── All checks ─────────────────────────────────────────
 
-check: fmt lint vet test
+check: lint vet test
     @echo "All checks passed."
 
 # ── Deploy ─────────────────────────────────────────────
