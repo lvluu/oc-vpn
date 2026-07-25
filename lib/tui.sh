@@ -5,7 +5,7 @@
 
 tui_profile_line() {
   local name="$1"
-  local status endpoint latency transfer
+  local status endpoint region latency transfer
 
   if wg_is_up "$name"; then
     status="UP"
@@ -24,7 +24,11 @@ tui_profile_line() {
     transfer="-"
   fi
 
-  printf "%-20s %-6s %-28s %-10s %s" "$name" "$status" "$endpoint" "$latency" "$transfer"
+  # Lookup region from endpoint IP
+  local host; host=$(echo "$endpoint" | cut -d: -f1)
+  region=$(geo_lookup "$host")
+
+  printf "%-20s %-6s %-24s %-24s %-10s %s" "$name" "$status" "$endpoint" "$region" "$latency" "$transfer"
 }
 
 tui_list_profiles() {
@@ -41,7 +45,7 @@ tui_list_profiles() {
   fi
 
   # Header
-  gum style --bold "  $(printf '%-20s %-6s %-28s %-10s %s' "PROFILE" "STATUS" "ENDPOINT" "LATENCY" "TRANSFER")"
+  gum style --bold "  $(printf '%-20s %-6s %-24s %-24s %-10s %s' "PROFILE" "STATUS" "ENDPOINT" "REGION" "LATENCY" "TRANSFER")"
   echo ""
 
   local name
@@ -138,8 +142,10 @@ tui_status() {
       color=245
     fi
 
-    local endpoint handshake latency transfer
+    local endpoint region handshake latency transfer
     endpoint=$(wg_endpoint "$name")
+    local host; host=$(echo "$endpoint" | cut -d: -f1)
+    region=$(geo_lookup "$host")
     handshake=$(wg_handshake_ago "$name")
     latency=$(wg_latency "$name")
     transfer=$(wg_transfer "$name")
@@ -148,6 +154,7 @@ tui_status() {
       "$(gum style --bold --foreground $color "${name}")" \
       "  Status:    ${status_str}" \
       "  Endpoint:  ${endpoint}" \
+      "  Region:    ${region}" \
       "  Handshake: ${handshake}" \
       "  Latency:   ${latency}" \
       "  Transfer:  ${transfer}"

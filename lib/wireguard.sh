@@ -150,3 +150,46 @@ wg_ip_info() {
   fi
   ns_exec "$name" curl -s --max-time 5 "http://ip-api.com/json" 2>/dev/null || echo "{}"
 }
+
+# ── Geo lookup (cached) ──────────────────────────────────────
+
+_geo_cache="${OC_VPN_PROFILES_DIR:-$HOME/.config/oc-vpn}/geo-cache"
+
+geo_lookup() {
+  local ip="$1"
+  [[ -z "$ip" || "$ip" == "-" ]] && { echo "-"; return; }
+
+  # Check cache
+  if [[ -f "$_geo_cache" ]]; then
+    local cached
+    cached=$(sed -n "s/^${ip}|//p" "$_geo_cache" | head -1)
+    if [[ -n "$cached" ]]; then
+      echo "$cached"
+      return
+    fi
+  fi
+
+  # Query ip-api.com (free, no key, 45 req/min)
+  local response
+  response=$(curl -s --max-time 3 "http://ip-api.com/json/${ip}?fields=country,city" 2>/dev/null || true)
+
+  local country city result
+  country=$(echo "$response" | sed -n 's/.*"country":"\([^"]*\)".*/\1/p' | head -1)
+  city=$(echo "$response" | sed -n 's/.*"city":"\([^"]*\)".*/\1/p' | head -1)
+
+  if [[ -n "$country" ]]; then
+    if [[ -n "$city" ]]; then
+      result="${city}, ${country}"
+    else
+      result="${country}"
+    fi
+  else
+    result="-"
+  fi
+
+  # Cache it
+  mkdir -p "$(dirname "$_geo_cache")"
+  echo "${ip}|${result}" >> "$_geo_cache"
+
+  echo "$result"
+}
