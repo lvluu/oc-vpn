@@ -20,17 +20,22 @@ ns_create() {
   ip netns exec "$ns" ip link set lo up
 
   # Create veth pair — use short names (Linux 15-char limit)
-  # ns name: "ocvpn-<profile>" → veth: "v<hash4>" / "v<hash4>n"
   local hash; hash=$(echo -n "$ns" | md5sum | head -c 4)
   local host_veth="v${hash}"
   local ns_veth="v${hash}n"
 
+  # Clean up any stale veth from previous failed attempt
+  ip link del "$host_veth" 2>/dev/null || true
+
   ip link add "$host_veth" type veth peer name "$ns_veth"
   ip link set "$ns_veth" netns "$ns"
 
-  ip addr add 10.200.0.1/24 dev "$host_veth" 2>/dev/null || true
+  # Flush any stale addresses before adding
+  ip addr flush dev "$host_veth" 2>/dev/null || true
+  ip addr add 10.200.0.1/24 dev "$host_veth"
   ip link set "$host_veth" up
 
+  ip netns exec "$ns" ip addr flush dev "$ns_veth" 2>/dev/null || true
   ip netns exec "$ns" ip addr add 10.200.0.2/24 dev "$ns_veth"
   ip netns exec "$ns" ip link set "$ns_veth" up
   ip netns exec "$ns" ip route add default via 10.200.0.1

@@ -36,16 +36,8 @@ wg_up() {
   ns_exec "$name" ip link add dev wg type wireguard
 
   # Apply config via wg set (no route management)
-  local wg_set_args=(
-    "$name" wg set wg0
-    private-key <(echo "$private_key")
-    peer "$public_key"
-    endpoint "$endpoint"
-    allowed-ips "${allowed_ips:-0.0.0.0/0}"
-  )
-  [[ -n "$keepalive" ]] && wg_set_args+=(persistent-keepalive "$keepalive")
-
-  ns_exec "$name" wg setconf wg0 <(sed -n '/^\[Interface\]/,/^\[Peer\]/p' "$conf" | sed '1d;$d')
+  # Strip wg-quick-only lines (SaveConfig, Table, etc.) that wg setconf doesn't understand
+  ns_exec "$name" wg setconf wg0 <(sed -n '/^\[Interface\]/,/^\[Peer\]/p' "$conf" | sed '1d;$d;/^SaveConfig/d;/^Table/d;/^DNS/d;/^MTU/d;/^Address/d;/^PostUp/d;/^PostDown/d;/^PreUp/d;/^PreDown/d')
   ns_exec "$name" wg set wg0 peer "$public_key" endpoint "$endpoint" allowed-ips "${allowed_ips:-0.0.0.0/0}" ${keepalive:+persistent-keepalive "$keepalive"}
 
   # ── Assign IP address ──────────────────────────────────────
