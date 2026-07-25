@@ -53,8 +53,7 @@ ns_destroy() {
   local ns; ns=$(ns_name "$1")
 
   # Disconnect WireGuard
-  ip netns exec "$ns" wg-quick down wg0 2>/dev/null || \
-    ip netns exec "$ns" ip link del wg0 2>/dev/null || true
+  ip netns exec "$ns" ip link del wg0 2>/dev/null || true
 
   # Remove veth pair (host side deletion removes both ends)
   local hash; hash=$(echo -n "$ns" | md5sum | head -c 4)
