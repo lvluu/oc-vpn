@@ -68,7 +68,7 @@ func Name(profile string) string {
 // Exists checks if a namespace exists.
 func Exists(profile string) bool {
 	ns := Name(profile)
-	out, err := exec.Command(IpPath(), "netns", "list").CombinedOutput()
+	out, err := exec.Command(IPPath(), "netns", "list").CombinedOutput()
 	if err != nil {
 		return false
 	}
@@ -107,8 +107,8 @@ func Create(profile string) error {
 	hostVeth := fmt.Sprintf("v%x", hash[:2])
 	nsVeth := fmt.Sprintf("v%xn", hash[:2])
 
-	// Clean up stale veth
-	exec.Command(IpPath(), "link", "del", hostVeth).Run()
+	// Clean up stale veth (best-effort)
+	_, _ = exec.Command(IPPath(), "link", "del", hostVeth).CombinedOutput()
 
 	vethCmds := [][]string{
 		{"ip", "link", "add", hostVeth, "type", "veth", "peer", "name", nsVeth},
@@ -128,8 +128,8 @@ func Create(profile string) error {
 		}
 	}
 
-	// Enable IP forwarding
-	exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1").Run()
+	// Enable IP forwarding (best-effort)
+	_, _ = exec.Command("sysctl", "-w", "net.ipv4.ip_forward=1").CombinedOutput()
 
 	// Get default route device
 	defaultDev, _ := getDefaultDev()
@@ -141,12 +141,12 @@ func Create(profile string) error {
 			"-j", "MASQUERADE",
 			"-m", "comment", "--comment", "oc-vpn-" + ns,
 		}
-		exec.Command("iptables", iptArgs...).Run()
+		_, _ = exec.Command("iptables", iptArgs...).CombinedOutput()
 	}
 
-	// Allow forwarding through UFW
-	exec.Command("ufw", "route", "allow", "from", cidr).Run()
-	exec.Command("ufw", "route", "allow", "to", cidr).Run()
+	// Allow forwarding through UFW (best-effort)
+	_, _ = exec.Command("ufw", "route", "allow", "from", cidr).CombinedOutput()
+	_, _ = exec.Command("ufw", "route", "allow", "to", cidr).CombinedOutput()
 
 	return nil
 }
@@ -156,13 +156,13 @@ func Destroy(profile string) {
 	ns := Name(profile)
 	cidr := SubnetCIDR(profile)
 
-	// Disconnect WireGuard
-	exec.Command(IpPath(), "netns", "exec", ns, "ip", "link", "del", "wg0").Run()
+	// Disconnect WireGuard (best-effort)
+	_, _ = exec.Command(IPPath(), "netns", "exec", ns, "ip", "link", "del", "wg0").CombinedOutput()
 
 	// Remove veth pair
 	hash := md5.Sum([]byte(ns))
 	hostVeth := fmt.Sprintf("v%x", hash[:2])
-	exec.Command(IpPath(), "link", "del", hostVeth).Run()
+	_, _ = exec.Command(IPPath(), "link", "del", hostVeth).CombinedOutput()
 
 	// Remove iptables rule
 	defaultDev, _ := getDefaultDev()
@@ -173,22 +173,22 @@ func Destroy(profile string) {
 			"-j", "MASQUERADE",
 			"-m", "comment", "--comment", "oc-vpn-" + ns,
 		}
-		exec.Command("iptables", iptArgs...).Run()
+		_, _ = exec.Command("iptables", iptArgs...).CombinedOutput()
 	}
 
 	// Delete namespace
-	exec.Command(IpPath(), "netns", "del", ns).Run()
+	_, _ = exec.Command(IPPath(), "netns", "del", ns).CombinedOutput()
 
 	// Clean up resolv.conf
-	exec.Command("rm", "-f", "/etc/netns/"+ns+"/resolv.conf").Run()
-	exec.Command("rmdir", "/etc/netns/"+ns).Run()
+	_, _ = exec.Command("rm", "-f", "/etc/netns/"+ns+"/resolv.conf").CombinedOutput()
+	_, _ = exec.Command("rmdir", "/etc/netns/"+ns).CombinedOutput()
 }
 
 // ExecRaw runs an interactive command inside a namespace (stdin/stdout/stderr inherited).
 func ExecRaw(profile string, cmd ...string) error {
 	ns := Name(profile)
 	args := append([]string{"netns", "exec", ns}, cmd...)
-	c := exec.Command(IpPath(), args...)
+	c := exec.Command(IPPath(), args...)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
@@ -201,16 +201,14 @@ func ExecAsUser(profile string, cmd ...string) error {
 	ns := Name(profile)
 	runUser := os.Getenv("SUDO_USER")
 	if runUser == "" {
-		// Not running via sudo, just run directly
 		return ExecRaw(profile, cmd...)
 	}
 
-	// Build the command string to pass to su
 	projectDir, _ := os.Getwd()
 	cmdStr := "cd '" + projectDir + "' && exec " + strings.Join(cmd, " ")
 
 	args := []string{"netns", "exec", ns, "su", "-", runUser, "-c", cmdStr}
-	c := exec.Command(IpPath(), args...)
+	c := exec.Command(IPPath(), args...)
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
@@ -221,12 +219,12 @@ func ExecAsUser(profile string, cmd ...string) error {
 func Exec(profile string, cmd ...string) (string, error) {
 	ns := Name(profile)
 	args := append([]string{"netns", "exec", ns}, cmd...)
-	out, err := exec.Command(IpPath(), args...).CombinedOutput()
+	out, err := exec.Command(IPPath(), args...).CombinedOutput()
 	return strings.TrimSpace(string(out)), err
 }
 
-// IpPath returns the path to the ip command.
-func IpPath() string {
+// IPPath returns the path to the ip command.
+func IPPath() string {
 	if p, err := exec.LookPath("ip"); err == nil {
 		return p
 	}
@@ -250,7 +248,7 @@ func IsConnected(profile string) bool {
 }
 
 func getDefaultDev() (string, error) {
-	out, err := exec.Command(IpPath(), "route", "show", "default").CombinedOutput()
+	out, err := exec.Command(IPPath(), "route", "show", "default").CombinedOutput()
 	if err != nil {
 		return "", err
 	}

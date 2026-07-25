@@ -33,15 +33,15 @@ type Meta struct {
 
 // WGConfig holds parsed WireGuard configuration fields.
 type WGConfig struct {
-	PrivateKey   string
-	Address      string
-	DNS          string
-	MTU          string
-	FwMark       string
-	Endpoint     string
-	PublicKey    string
-	AllowedIPs   string
-	Keepalive    string
+	PrivateKey string
+	Address    string
+	DNS        string
+	MTU        string
+	FwMark     string
+	Endpoint   string
+	PublicKey  string
+	AllowedIPs string
+	Keepalive  string
 }
 
 // Dir returns the profiles directory, preferring $OC_VPN_PROFILES_DIR,
@@ -150,8 +150,8 @@ func Import(confPath, name string, extraFlags ...string) error {
 	}
 
 	// Strip wg-quick-only fields
-	if err := stripWGQuickFields(confDest); err != nil {
-		return fmt.Errorf("stripping config: %w", err)
+	if stripErr := stripWGQuickFields(confDest); stripErr != nil {
+		return fmt.Errorf("stripping config: %w", stripErr)
 	}
 
 	// Parse endpoint from cleaned config
@@ -197,7 +197,7 @@ func Endpoint(name string) (string, error) {
 	}
 	cfg, err := ParseConfig(p.ConfPath)
 	if err != nil {
-		return "-", nil
+		return "-", err
 	}
 	if cfg.Endpoint == "" {
 		return "-", nil

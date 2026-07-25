@@ -129,7 +129,7 @@ func TestImportInvalidName(t *testing.T) {
 	t.Setenv("OC_VPN_PROFILES_DIR", tmpDir)
 
 	confPath := filepath.Join(tmpDir, "test.conf")
-	os.WriteFile(confPath, []byte("[Interface]\n"), 0o644)
+	_ = os.WriteFile(confPath, []byte("[Interface]\n"), 0o644)
 
 	if err := Import(confPath, "../escape"); err == nil {
 		t.Error("Import with path traversal name should fail")
@@ -151,8 +151,8 @@ func TestRemove(t *testing.T) {
 
 	// Create a profile
 	profileDir := filepath.Join(tmpDir, "to-delete")
-	os.MkdirAll(profileDir, 0o755)
-	os.WriteFile(filepath.Join(profileDir, "wg.conf"), []byte("[Interface]\n"), 0o644)
+	_ = os.MkdirAll(profileDir, 0o755)
+	_ = os.WriteFile(filepath.Join(profileDir, "wg.conf"), []byte("[Interface]\n"), 0o644)
 
 	if err := Remove("to-delete"); err != nil {
 		t.Fatalf("Remove() error = %v", err)
@@ -179,8 +179,8 @@ func TestList(t *testing.T) {
 	// Create some profiles
 	for _, name := range []string{"alpha", "beta", "gamma"} {
 		dir := filepath.Join(tmpDir, name)
-		os.MkdirAll(dir, 0o755)
-		os.WriteFile(filepath.Join(dir, "wg.conf"), []byte("[Interface]\n"), 0o644)
+		_ = os.MkdirAll(dir, 0o755)
+		_ = os.WriteFile(filepath.Join(dir, "wg.conf"), []byte("[Interface]\n"), 0o644)
 	}
 
 	names := List()
@@ -218,8 +218,8 @@ func TestCount(t *testing.T) {
 		t.Errorf("Count() = %d, want 0", got)
 	}
 
-	os.MkdirAll(filepath.Join(tmpDir, "a"), 0o755)
-	os.MkdirAll(filepath.Join(tmpDir, "b"), 0o755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "a"), 0o755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "b"), 0o755)
 
 	if got := Count(); got != 2 {
 		t.Errorf("Count() = %d, want 2", got)
@@ -243,7 +243,7 @@ Endpoint = vpn.example.com:51820
 AllowedIPs = 0.0.0.0/0, ::/0
 PersistentKeepalive = 25
 `
-	os.WriteFile(confPath, []byte(config), 0o644)
+	_ = os.WriteFile(confPath, []byte(config), 0o644)
 
 	cfg, err := ParseConfig(confPath)
 	if err != nil {
@@ -285,8 +285,8 @@ func TestEndpoint(t *testing.T) {
 
 	// Create profile with endpoint
 	dir := filepath.Join(tmpDir, "with-endpoint")
-	os.MkdirAll(dir, 0o755)
-	os.WriteFile(filepath.Join(dir, "wg.conf"), []byte(`[Interface]
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "wg.conf"), []byte(`[Interface]
 PrivateKey = test=
 
 [Peer]

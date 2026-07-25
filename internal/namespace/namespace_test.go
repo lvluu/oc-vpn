@@ -34,7 +34,7 @@ func TestVethNameLength(t *testing.T) {
 	for _, name := range []string{"a", "us-east", "vpnbook-us", "long-profile-name"} {
 		ns := Name(name)
 		hash := [16]byte{}
-		copy(hash[:], []byte(ns))
+		copy(hash[:], ns)
 		hostVeth := fmt.Sprintf("v%x", hash[:2])
 		if len(hostVeth) > 15 {
 			t.Errorf("hostVeth for %q = %q, length %d > 15", name, hostVeth, len(hostVeth))
@@ -80,7 +80,7 @@ func TestSubnetIn200Range(t *testing.T) {
 	for _, profile := range []string{"x", "y", "z", "vpnbook-us", "vpnbook-eu1"} {
 		s, h, n, gw := Subnet(profile)
 		var thirdOctet int
-		fmt.Sscanf(s, "10.200.%d.0/24", &thirdOctet)
+		_, _ = fmt.Sscanf(s, "10.200.%d.0/24", &thirdOctet)
 		if thirdOctet < 1 || thirdOctet > 254 {
 			t.Errorf("Subnet(%q) third octet = %d, want 1-254", profile, thirdOctet)
 		}

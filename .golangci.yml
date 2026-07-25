@@ -1,0 +1,51 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+
+  enable:
+    - copyloopvar
+    - gocritic
+    - misspell
+    - nilerr
+    - unconvert
+    - unparam
+    - wastedassign
+
+  disable:
+    - errname     # too noisy for this codebase
+    - exhaustruct # overkill for CLI tool structs
+
+  settings:
+    govet:
+      enable-all: true
+    staticcheck:
+      checks:
+        - all
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+      disabled-checks:
+        - hugeParam
+        - rangeValCopy
+    goimports:
+      local-prefixes: github.com/lvluu/oc-vpn
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - unparam
+        - gocritic

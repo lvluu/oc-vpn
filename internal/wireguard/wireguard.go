@@ -30,8 +30,8 @@ func Up(name string) error {
 
 	// Create namespace if needed
 	if !namespace.Exists(name) {
-		if err := namespace.Create(name); err != nil {
-			return fmt.Errorf("creating namespace: %w", err)
+		if createErr := namespace.Create(name); createErr != nil {
+			return fmt.Errorf("creating namespace: %w", createErr)
 		}
 	}
 
@@ -41,8 +41,8 @@ func Up(name string) error {
 	}
 
 	// Create WireGuard interface
-	if _, err := namespace.Exec(name, "ip", "link", "add", "dev", "wg0", "type", "wireguard"); err != nil {
-		return fmt.Errorf("creating wg0: %w", err)
+	if _, execErr := namespace.Exec(name, "ip", "link", "add", "dev", "wg0", "type", "wireguard"); execErr != nil {
+		return fmt.Errorf("creating wg0: %w", execErr)
 	}
 
 	// Build clean config for wg setconf
@@ -50,34 +50,32 @@ func Up(name string) error {
 	if err != nil {
 		return fmt.Errorf("creating temp config: %w", err)
 	}
-	defer os.Remove(tmpconf.Name())
+	defer func() { _ = os.Remove(tmpconf.Name()) }()
 
 	var sb strings.Builder
-	sb.WriteString("[Interface]\n")
-	sb.WriteString(fmt.Sprintf("PrivateKey = %s\n", cfg.PrivateKey))
+	fmt.Fprintf(&sb, "[Interface]\nPrivateKey = %s\n", cfg.PrivateKey)
 	if cfg.MTU != "" {
-		sb.WriteString(fmt.Sprintf("MTU = %s\n", cfg.MTU))
+		fmt.Fprintf(&sb, "MTU = %s\n", cfg.MTU)
 	}
 	if cfg.FwMark != "" {
-		sb.WriteString(fmt.Sprintf("FwMark = %s\n", cfg.FwMark))
+		fmt.Fprintf(&sb, "FwMark = %s\n", cfg.FwMark)
 	}
-	sb.WriteString("[Peer]\n")
-	sb.WriteString(fmt.Sprintf("PublicKey = %s\n", cfg.PublicKey))
+	fmt.Fprintf(&sb, "[Peer]\nPublicKey = %s\n", cfg.PublicKey)
 	if cfg.Endpoint != "" {
-		sb.WriteString(fmt.Sprintf("Endpoint = %s\n", cfg.Endpoint))
+		fmt.Fprintf(&sb, "Endpoint = %s\n", cfg.Endpoint)
 	}
 	if cfg.AllowedIPs != "" {
-		sb.WriteString(fmt.Sprintf("AllowedIPs = %s\n", cfg.AllowedIPs))
+		fmt.Fprintf(&sb, "AllowedIPs = %s\n", cfg.AllowedIPs)
 	}
 	if cfg.Keepalive != "" {
-		sb.WriteString(fmt.Sprintf("PersistentKeepalive = %s\n", cfg.Keepalive))
+		fmt.Fprintf(&sb, "PersistentKeepalive = %s\n", cfg.Keepalive)
 	}
 
 	if _, err := tmpconf.WriteString(sb.String()); err != nil {
-		tmpconf.Close()
+		_ = tmpconf.Close()
 		return err
 	}
-	tmpconf.Close()
+	_ = tmpconf.Close()
 
 	// Apply config
 	if _, err := namespace.Exec(name, "wg", "setconf", "wg0", tmpconf.Name()); err != nil {
@@ -89,12 +87,12 @@ func Up(name string) error {
 	// fall back to meta.json where it's saved separately.
 	address := cfg.Address
 	if address == "" {
-		if meta, err := profiles.ReadMeta(name); err == nil {
+		if meta, metaErr := profiles.ReadMeta(name); metaErr == nil {
 			address = meta.Address
 		}
 	}
 	if address != "" {
-		namespace.Exec(name, "ip", "addr", "add", address, "dev", "wg0")
+		_, _ = namespace.Exec(name, "ip", "addr", "add", address, "dev", "wg0")
 	}
 
 	mtu := "1420"
@@ -108,11 +106,11 @@ func Up(name string) error {
 	// Route management
 	endpointHost := extractIPv4(cfg.Endpoint)
 	if endpointHost != "" {
-		namespace.Exec(name, "ip", "route", "add", endpointHost+"/32", "via", namespace.Gateway(name))
+		_, _ = namespace.Exec(name, "ip", "route", "add", endpointHost+"/32", "via", namespace.Gateway(name))
 	}
 
 	// Replace default route through wg0
-	namespace.Exec(name, "ip", "route", "replace", "default", "dev", "wg0")
+	_, _ = namespace.Exec(name, "ip", "route", "replace", "default", "dev", "wg0")
 
 	// DNS setup — write directly inside the namespace
 	dnsServers := cfg.DNS
@@ -123,17 +121,18 @@ func Up(name string) error {
 	for _, ns := range strings.Split(dnsServers, ",") {
 		ns = strings.TrimSpace(ns)
 		if ns != "" {
-			dnsContent.WriteString(fmt.Sprintf("nameserver %s\n", ns))
+			fmt.Fprintf(&dnsContent, "nameserver %s\n", ns)
 		}
 	}
 
 	// Write resolv.conf via /etc/netns/<ns>/resolv.conf (kernel applies it)
 	nsDir := "/etc/netns/" + namespace.Name(name)
-	os.MkdirAll(nsDir, 0o755)
-	os.WriteFile(nsDir+"/resolv.conf", []byte(dnsContent.String()), 0o644)
+	_ = os.MkdirAll(nsDir, 0o755)
+	_ = os.WriteFile(nsDir+"/resolv.conf", []byte(dnsContent.String()), 0o644)
 
 	// Also write directly into the namespace's /etc/resolv.conf
-	namespace.Exec(name, "bash", "-c", fmt.Sprintf("echo '%s' > /etc/resolv.conf", strings.TrimSpace(dnsContent.String())))
+	_, _ = namespace.Exec(name, "bash", "-c",
+		fmt.Sprintf("echo '%s' > /etc/resolv.conf", strings.TrimSpace(dnsContent.String())))
 
 	return nil
 }
@@ -276,7 +275,7 @@ func IPInfo(name string) map[string]string {
 
 	// Simple JSON parsing without external deps
 	for _, key := range []string{"country", "city", "isp"} {
-		search := fmt.Sprintf(`"%s":"`, key)
+		search := fmt.Sprintf(`%q:`, key)
 		if idx := strings.Index(out, search); idx != -1 {
 			val := out[idx+len(search):]
 			if end := strings.Index(val, `"`); end != -1 {
@@ -288,15 +287,12 @@ func IPInfo(name string) map[string]string {
 }
 
 func extractIPv4(endpoint string) string {
-	// Handle "host:port" format
 	host := endpoint
 	if idx := strings.LastIndex(endpoint, ":"); idx != -1 {
 		host = endpoint[:idx]
 	}
-	// Strip brackets for IPv6
 	host = strings.Trim(host, "[]")
 
-	// Validate IPv4 format
 	parts := strings.Split(host, ".")
 	if len(parts) != 4 {
 		return ""

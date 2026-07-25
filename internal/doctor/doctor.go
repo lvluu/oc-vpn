@@ -44,7 +44,7 @@ func Run() []Check {
 	// Network namespaces
 	if os.Getuid() == 0 {
 		if err := exec.Command("ip", "netns", "add", "_ocvpn_test").Run(); err == nil {
-			exec.Command("ip", "netns", "del", "_ocvpn_test").Run()
+			_ = exec.Command("ip", "netns", "del", "_ocvpn_test").Run()
 			checks = append(checks, Check{"network namespaces", "ok", "supported"})
 		} else {
 			checks = append(checks, Check{"network namespaces", "fail", "not available"})

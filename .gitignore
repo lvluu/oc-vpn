@@ -4,7 +4,7 @@ test/*.conf
 .env
 
 # Go
-oc-vpn
-oc-vpn-go
+/oc-vpn
+/oc-vpn-go
 *.exe
 vendor/

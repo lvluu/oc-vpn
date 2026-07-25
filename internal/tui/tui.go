@@ -51,8 +51,8 @@ func pickProfileArrow(names []string) (string, error) {
 		// don't leak into the calling TUI (e.g. opencode).
 		const TIOCFLUSH = 0x5410
 		const TCIFLUSH = 0
-		syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), TIOCFLUSH, TCIFLUSH)
-		term.Restore(fd, oldState)
+		_, _, _ = syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), TIOCFLUSH, TCIFLUSH)
+		_ = term.Restore(fd, oldState)
 		fmt.Print("\033[?25h") // ensure cursor is visible
 	}()
 
