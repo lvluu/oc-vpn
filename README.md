@@ -4,17 +4,43 @@ Run [opencode](https://opencode.ai) through isolated WireGuard tunnels.
 
 WireGuard with `AllowedIPs=0.0.0.0/0` captures **all** traffic. This tool isolates each tunnel in a **Linux network namespace** so multiple tunnels can coexist without route conflicts. The host's routing table is never modified.
 
-## Requirements
+## Prerequisites
 
-| Tool | Purpose |
-|------|---------|
-| `wg` (wireguard-tools) | WireGuard interface management |
-| `gum` | Terminal UI |
-| `curl` | Public IP checks |
-| Linux with `ip netns` support | Network namespace isolation |
-| `sudo` / root | Namespace and iptables operations |
+### Required
 
-## Install
+| Tool | Package | Purpose |
+|------|---------|---------|
+| `wg` | `wireguard-tools` | WireGuard interface management |
+| `gum` | `gum` | Terminal UI (profile picker, status dashboard, spinners) |
+| `curl` | `curl` | Public IP checks |
+| `ip` | `iproute2` | Network namespace and interface management |
+| `iptables` | `iptables` | NAT for namespace traffic |
+| `sudo` / root | — | Namespace and iptables operations require root |
+
+### Linux Kernel
+
+- WireGuard kernel module (`wireguard`)
+- Network namespaces (`CONFIG_NETNS`)
+- veth device support
+
+Most modern Linux distributions (kernel 5.6+) include WireGuard in-tree.
+
+### Install by Distro
+
+```bash
+# Arch Linux
+sudo pacman -S wireguard-tools gum curl iptables iproute2
+
+# Ubuntu / Debian
+sudo apt install wireguard-tools gum curl iptables iproute2
+
+# Fedora / RHEL
+sudo dnf install wireguard-tools gum curl iptables iproute2
+```
+
+> **Note**: `gum` may not be in your distro's default repos. See [github.com/charmbracelet/gum](https://github.com/charmbracelet/gum) for install instructions.
+
+## Install oc-vpn
 
 ```bash
 sudo ./install.sh
@@ -22,12 +48,46 @@ sudo ./install.sh
 
 This symlinks `bin/oc-vpn` to `/usr/local/bin/oc-vpn`.
 
+## Doctor
+
+Run `oc-vpn doctor` to verify your system is ready. It checks each dependency and reports pass/warn/fail:
+
+```bash
+$ oc-vpn doctor
+
+╭─────╮
+│ ... │  System Check
+╰─────╯
+
+  ✓ wg  wg-tools v1.0.20210914
+  ✓ wireguard kernel module  loaded
+  ✓ network namespaces  supported
+  ✓ gum  v0.14.5
+  ✓ curl  available
+  ✓ root privileges  yes
+  ✓ profiles dir  /home/user/.config/oc-vpn/profiles (2 profiles)
+
+  All checks passed.
+```
+
+### What doctor checks
+
+| Check | What happens | Fix |
+|-------|-------------|-----|
+| **wg** | `command -v wg` | `sudo pacman -S wireguard-tools` |
+| **wireguard module** | `modprobe wireguard` or `lsmod` | Usually loads on demand; verify with `modprobe wireguard` |
+| **network namespaces** | Creates and deletes a test namespace | Ensure `ip` from iproute2 is installed; needs root |
+| **resolvconf** | `command -v resolvconf` | Optional — DNS falls back to `/etc/netns/` without it |
+| **gum** | `command -v gum` | [Install gum](https://github.com/charmbracelet/gum#installation) |
+| **curl** | `command -v curl` | `sudo pacman -S curl` (or distro equivalent) |
+| **root** | Check `$EUID` | Run with `sudo` |
+| **profiles dir** | Checks `~/.config/oc-vpn/profiles/` | Created automatically on first import |
+
+If a check fails, fix the issue and re-run `oc-vpn doctor` until all checks pass.
+
 ## Usage
 
 ```bash
-# Check system requirements
-oc-vpn doctor
-
 # Import a WireGuard config
 oc-vpn import ./us-east.conf -n us-east
 
