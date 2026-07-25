@@ -11,7 +11,7 @@ WireGuard with `AllowedIPs=0.0.0.0/0` captures **all** traffic. This tool isolat
 | Tool | Package | Purpose |
 |------|---------|---------|
 | `wg` | `wireguard-tools` | WireGuard interface management |
-| `gum` | `gum` | Terminal UI (profile picker, status dashboard, spinners) |
+| `gum` | `gum` | Terminal UI (profile picker, status dashboard) |
 | `curl` | `curl` | Public IP checks |
 | `ip` | `iproute2` | Network namespace and interface management |
 | `iptables` | `iptables` | NAT for namespace traffic |
@@ -40,13 +40,22 @@ sudo dnf install wireguard-tools gum curl iptables iproute2
 
 > **Note**: `gum` may not be in your distro's default repos. See [github.com/charmbracelet/gum](https://github.com/charmbracelet/gum) for install instructions.
 
-## Install oc-vpn
+## Install
+
+### From source
 
 ```bash
-sudo ./install.sh
+git clone https://github.com/lvluu/oc-vpn.git
+cd oc-vpn
+go build -o oc-vpn ./cmd/oc-vpn
+sudo mv oc-vpn /usr/local/bin/
 ```
 
-This symlinks `bin/oc-vpn` to `/usr/local/bin/oc-vpn`.
+### Run tests
+
+```bash
+go test ./...
+```
 
 ## Doctor
 
@@ -55,19 +64,16 @@ Run `oc-vpn doctor` to verify your system is ready. It checks each dependency an
 ```bash
 $ oc-vpn doctor
 
-╭─────╮
-│ ... │  System Check
-╰─────╯
+System checks:
 
-  ✓ wg  wg-tools v1.0.20210914
-  ✓ wireguard kernel module  loaded
-  ✓ network namespaces  supported
-  ✓ gum  v0.14.5
-  ✓ curl  available
-  ✓ root privileges  yes
-  ✓ profiles dir  /home/user/.config/oc-vpn/profiles (2 profiles)
-
-  All checks passed.
+  ✓ wg — wireguard-tools v1.0.20210914
+  ✓ wireguard module — loaded
+  ✓ network namespaces — available (needs sudo)
+  ! resolvconf — not found — DNS uses /etc/resolv.conf fallback
+  ✓ gum — v0.14.5
+  ✓ curl — available
+  ! root privileges — no — run with sudo
+  ✓ profiles dir — /home/user/.config/oc-vpn/profiles (2 profiles)
 ```
 
 ### What doctor checks
@@ -94,9 +100,6 @@ oc-vpn import ./us-east.conf -n us-east
 # List profiles
 oc-vpn list
 
-# Launch opencode in a tunnel (interactive profile picker)
-sudo oc-vpn run
-
 # Launch directly in a named profile
 sudo oc-vpn run us-east
 
@@ -108,7 +111,7 @@ sudo oc-vpn down us-east
 sudo oc-vpn ip us-east
 
 # Live status dashboard
-sudo oc-vpn status --live
+sudo oc-vpn status
 
 # Drop into a shell inside the namespace
 sudo oc-vpn shell us-east
@@ -158,15 +161,14 @@ Stored in `~/.config/oc-vpn/profiles/<name>/`:
 
 ```
 oc-vpn/
-├── bin/oc-vpn          # Main CLI entry point
-├── lib/
-│   ├── namespace.sh    # Network namespace management
-│   ├── wireguard.sh    # WireGuard operations + IP/geo queries
-│   ├── profiles.sh     # Profile CRUD
-│   ├── doctor.sh       # System requirement checks
-│   └── tui.sh          # gum-based terminal UI
-├── test/               # Sample WireGuard configs
-├── install.sh          # Symlink installer
+├── cmd/oc-vpn/main.go      # CLI entry point
+├── internal/
+│   ├── profiles/            # Profile CRUD, config parsing
+│   ├── namespace/           # Network namespace management
+│   ├── wireguard/           # WireGuard operations, IP/geo queries
+│   ├── doctor/              # System requirement checks
+│   └── tui/                 # Terminal UI (gum + fallback)
+├── test/                    # Sample WireGuard configs
 └── README.md
 ```
 

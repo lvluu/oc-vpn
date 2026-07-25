@@ -16,13 +16,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install shellcheck
-        run: sudo apt-get install -y shellcheck
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
 
-      - name: Lint shell scripts
+      - name: Vet
+        run: go vet ./...
+
+      - name: Staticcheck
         run: |
-          shellcheck -s bash -x --severity=warning bin/oc-vpn
-          shellcheck -s bash -x --severity=warning lib/*.sh
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
 
   test:
     name: Test
@@ -30,19 +34,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install bats-core
-        run: |
-          git clone --depth 1 https://github.com/bats-core/bats-core.git /tmp/bats
-          sudo /tmp/bats/install.sh /usr/local
-
-      - name: Install dependencies
-        run: sudo apt-get install -y wireguard-tools curl iproute2 iptables
-
-      - name: Install gum
-        run: |
-          GUM_VERSION=$(curl -sL https://api.github.com/repos/charmbracelet/gum/releases/latest | grep '"tag_name"' | sed 's/.*"v\(.*\)".*/\1/')
-          curl -sL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/gum_${GUM_VERSION}_amd64.deb" -o /tmp/gum.deb
-          sudo dpkg -i /tmp/gum.deb
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
 
       - name: Run tests
-        run: bats test/*.bats --verbose-run
+        run: go test -v -race -count=1 ./...
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build
+        run: go build -o oc-vpn ./cmd/oc-vpn

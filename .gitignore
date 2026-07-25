@@ -2,3 +2,9 @@ test/*.conf
 *.key
 *.pem
 .env
+
+# Go
+oc-vpn
+oc-vpn-go
+*.exe
+vendor/
