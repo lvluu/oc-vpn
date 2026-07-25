@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # tui.sh — gum-based terminal UI for oc-vpn
 
-DIM='\033[2m'; NC='\033[0m'
-
 # ── Profile list with status ──────────────────────────────────
 
 tui_profile_line() {
