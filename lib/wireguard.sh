@@ -69,16 +69,8 @@ wg_up() {
   ns_exec "$name" ip route replace default dev wg0 2>/dev/null || true
 
   # ── DNS setup ──────────────────────────────────────────────
-  if [[ -n "$dns" ]] && command -v resolvconf &>/dev/null; then
-    # resolvconf is available — let it handle DNS
-    echo "$dns" | tr ',' '\n' | sed 's/^nameserver /nameserver /' | \
-      ns_exec "$name" resolvconf -a tun.wg -m 0 -x 2>/dev/null || true
-  elif [[ -n "$dns" ]]; then
-    # No resolvconf — use /etc/netns/ fallback
-    local ns; ns=$(ns_name "$name")
-    mkdir -p "/etc/netns/${ns}"
-    echo "$dns" | tr ',' '\n' | sed 's/^/nameserver /' > "/etc/netns/${ns}/resolv.conf"
-  fi
+  # Overwrite /etc/resolv.conf inside namespace with real DNS servers
+  echo -e "nameserver 1.1.1.1\nnameserver 8.8.8.8" | ns_exec "$name" bash -c 'cat > /etc/resolv.conf'
 }
 
 wg_down() {
