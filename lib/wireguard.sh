@@ -20,10 +20,12 @@ wg_up() {
   fi
 
   # ── Parse config manually ──────────────────────────────────
-  local private_key address dns endpoint public_key allowed_ips
+  local private_key address dns endpoint public_key allowed_ips mtu fwmark
   private_key=$(sed -n 's/^PrivateKey\s*=\s*//p' "$conf" | head -1)
   address=$(sed -n 's/^Address\s*=\s*//p' "$conf" | head -1)
   dns=$(sed -n 's/^DNS\s*=\s*//p' "$conf" | head -1)
+  mtu=$(sed -n 's/^MTU\s*=\s*//p' "$conf" | head -1)
+  fwmark=$(sed -n 's/^FwMark\s*=\s*//p' "$conf" | head -1)
   endpoint=$(sed -n 's/^Endpoint\s*=\s*//p' "$conf" | head -1)
   public_key=$(sed -n '/^\[Peer\]/,/^$/s/^PublicKey\s*=\s*//p' "$conf" | head -1)
   allowed_ips=$(sed -n '/^\[Peer\]/,/^$/s/^AllowedIPs\s*=\s*//p' "$conf" | head -1)
@@ -35,10 +37,21 @@ wg_up() {
   # ── Create WireGuard interface ─────────────────────────────
   ns_exec "$name" ip link add dev wg type wireguard
 
-  # Apply config via wg set (no route management)
-  # Strip wg-quick-only lines (SaveConfig, Table, etc.) that wg setconf doesn't understand
-  ns_exec "$name" wg setconf wg0 <(sed -n '/^\[Interface\]/,/^\[Peer\]/p' "$conf" | sed '1d;$d;/^SaveConfig/d;/^Table/d;/^DNS/d;/^MTU/d;/^Address/d;/^PostUp/d;/^PostDown/d;/^PreUp/d;/^PreDown/d')
-  ns_exec "$name" wg set wg0 peer "$public_key" endpoint "$endpoint" allowed-ips "${allowed_ips:-0.0.0.0/0}" ${keepalive:+persistent-keepalive "$keepalive"}
+  # Apply config via wg setconf — build a clean config with only wg-quick-agnostic fields
+  local tmpconf; tmpconf=$(mktemp)
+  {
+    echo "[Interface]"
+    echo "PrivateKey = ${private_key}"
+    [[ -n "$mtu" ]] && echo "MTU = ${mtu}"
+    [[ -n "$fwmark" ]] && echo "FwMark = ${fwmark}"
+    echo "[Peer]"
+    echo "PublicKey = ${public_key}"
+    [[ -n "$endpoint" ]] && echo "Endpoint = ${endpoint}"
+    [[ -n "$allowed_ips" ]] && echo "AllowedIPs = ${allowed_ips}"
+    [[ -n "$keepalive" ]] && echo "PersistentKeepalive = ${keepalive}"
+  } > "$tmpconf"
+  ns_exec "$name" wg setconf wg0 "$tmpconf"
+  rm -f "$tmpconf"
 
   # ── Assign IP address ──────────────────────────────────────
   # Strip CIDR mask for ip addr (e.g., "10.104.8.99/32" → "10.104.8.99/32" kept as-is)
