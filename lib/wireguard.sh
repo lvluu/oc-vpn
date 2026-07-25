@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # wireguard.sh — WireGuard operations inside network namespaces
+#
+# Uses "wg set" directly instead of wg-quick to avoid automatic
+# route management that conflicts with namespace networking.
 
 wg_up() {
   local name="$1"
@@ -16,18 +19,50 @@ wg_up() {
     return 0
   fi
 
-  # Bring up WireGuard inside namespace
-  ns_exec "$name" wg-quick up "$conf"
+  # ── Parse config manually ──────────────────────────────────
+  local private_key address dns endpoint public_key allowed_ips
+  private_key=$(sed -n 's/^PrivateKey\s*=\s*//p' "$conf" | head -1)
+  address=$(sed -n 's/^Address\s*=\s*//p' "$conf" | head -1)
+  dns=$(sed -n 's/^DNS\s*=\s*//p' "$conf" | head -1)
+  endpoint=$(sed -n 's/^Endpoint\s*=\s*//p' "$conf" | head -1)
+  public_key=$(sed -n '/^\[Peer\]/,/^$/s/^PublicKey\s*=\s*//p' "$conf" | head -1)
+  allowed_ips=$(sed -n '/^\[Peer\]/,/^$/s/^AllowedIPs\s*=\s*//p' "$conf" | head -1)
+  local keepalive
+  keepalive=$(sed -n '/^\[Peer\]/,/^$/s/^PersistentKeepalive\s*=\s*//p' "$conf" | head -1)
 
-  # DNS setup — resolvconf handles it if available
-  # Fallback: /etc/netns/<ns>/resolv.conf
-  if ! command -v resolvconf &>/dev/null; then
+  [[ -z "$private_key" || -z "$endpoint" || -z "$public_key" ]] && return 1
+
+  # ── Create WireGuard interface ─────────────────────────────
+  ns_exec "$name" ip link add dev wg type wireguard
+
+  # Apply config via wg set (no route management)
+  local wg_set_args=(
+    "$name" wg set wg0
+    private-key <(echo "$private_key")
+    peer "$public_key"
+    endpoint "$endpoint"
+    allowed-ips "${allowed_ips:-0.0.0.0/0}"
+  )
+  [[ -n "$keepalive" ]] && wg_set_args+=(persistent-keepalive "$keepalive")
+
+  ns_exec "$name" wg setconf wg0 <(sed -n '/^\[Interface\]/,/^\[Peer\]/p' "$conf" | sed '1d;$d')
+  ns_exec "$name" wg set wg0 peer "$public_key" endpoint "$endpoint" allowed-ips "${allowed_ips:-0.0.0.0/0}" ${keepalive:+persistent-keepalive "$keepalive"}
+
+  # ── Assign IP address ──────────────────────────────────────
+  # Strip CIDR mask for ip addr (e.g., "10.104.8.99/32" → "10.104.8.99/32" kept as-is)
+  ns_exec "$name" ip addr add "$address" dev wg 2>/dev/null || true
+  ns_exec "$name" ip link set mtu 1420 up dev wg
+
+  # ── DNS setup ──────────────────────────────────────────────
+  if [[ -n "$dns" ]] && command -v resolvconf &>/dev/null; then
+    # resolvconf is available — let it handle DNS
+    echo "$dns" | tr ',' '\n' | sed 's/^nameserver /nameserver /' | \
+      ns_exec "$name" resolvconf -a tun.wg -m 0 -x 2>/dev/null || true
+  elif [[ -n "$dns" ]]; then
+    # No resolvconf — use /etc/netns/ fallback
     local ns; ns=$(ns_name "$name")
-    local dns; dns=$(profile_dns_servers "$name")
-    if [[ -n "$dns" ]]; then
-      mkdir -p "/etc/netns/${ns}"
-      echo "$dns" | tr ',' '\n' | sed 's/^/nameserver /' > "/etc/netns/${ns}/resolv.conf"
-    fi
+    mkdir -p "/etc/netns/${ns}"
+    echo "$dns" | tr ',' '\n' | sed 's/^/nameserver /' > "/etc/netns/${ns}/resolv.conf"
   fi
 }
 
@@ -51,7 +86,6 @@ wg_status() {
     return
   fi
 
-  # Handshake time
   local handshake
   handshake=$(ns_exec "$name" wg show wg0 latest-handshakes 2>/dev/null | awk '{print $2}' | head -1 || echo 0)
   local now; now=$(date +%s)
@@ -97,10 +131,6 @@ wg_transfer() {
     return
   fi
   local rx tx
-  rx=$(cat "/sys/class/net/wg0/statistics/rx_bytes" 2>/dev/null || echo 0)
-  tx=$(cat "/sys/class/net/wg0/statistics/tx_bytes" 2>/dev/null || echo 0)
-
-  # Run inside namespace
   rx=$(ns_exec "$name" cat /sys/class/net/wg0/statistics/rx_bytes 2>/dev/null || echo 0)
   tx=$(ns_exec "$name" cat /sys/class/net/wg0/statistics/tx_bytes 2>/dev/null || echo 0)
 

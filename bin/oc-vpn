@@ -110,7 +110,10 @@ cmd_remove() {
 cmd_up() {
   require_root
   local name="${1:-}"
-  [[ -z "$name" ]] && die "usage: oc-vpn up <name>"
+
+  if [[ -z "$name" ]]; then
+    name=$(tui_pick_profile) || return
+  fi
   require_profile "$name"
 
   if wg_is_up "$name"; then
@@ -129,7 +132,10 @@ cmd_up() {
 cmd_down() {
   require_root
   local name="${1:-}"
-  [[ -z "$name" ]] && die "usage: oc-vpn down <name>"
+
+  if [[ -z "$name" ]]; then
+    name=$(tui_pick_profile) || return
+  fi
   require_profile "$name"
 
   if ! ns_exists "$name"; then
@@ -183,7 +189,10 @@ cmd_run() {
 cmd_shell() {
   require_root
   local name="${1:-}"
-  [[ -z "$name" ]] && die "usage: oc-vpn shell <name>"
+
+  if [[ -z "$name" ]]; then
+    name=$(tui_pick_profile) || return
+  fi
   require_profile "$name"
 
   if ! ns_exists "$name"; then
