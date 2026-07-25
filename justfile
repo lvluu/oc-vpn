@@ -14,7 +14,7 @@ clean:
 # ── Quality ────────────────────────────────────────────
 
 fmt:
-    gofumpt -l -w .
+    gofmt -l -w .
     goimports -w -local github.com/lvluu/oc-vpn .
 
 lint:
