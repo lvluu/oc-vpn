@@ -25,7 +25,7 @@ info() { echo -e "\033[0;34m::\033[0m $*"; }
 warn() { echo -e "\033[0;33m!\033[0m $*"; }
 
 require_root() {
-  [[ $EUID -eq 0 ]] || die "must run as root (try: sudo oc-vpn $*)"
+  [[ $EUID -eq 0 ]] || die "must run as root"
 }
 
 require_profile() {
@@ -181,6 +181,7 @@ cmd_run() {
   local project_dir="$PWD"
   local run_user="${SUDO_USER:-$USER}"
   local user_home
+  # shellcheck disable=SC2034
   user_home=$(getent passwd "$run_user" | cut -d: -f6)
 
   # Run as real user with their full environment

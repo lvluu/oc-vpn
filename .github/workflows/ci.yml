@@ -21,8 +21,8 @@ jobs:
 
       - name: Lint shell scripts
         run: |
-          shellcheck -s bash bin/oc-vpn
-          shellcheck -s bash lib/*.sh
+          shellcheck -s bash -x --severity=warning bin/oc-vpn
+          shellcheck -s bash -x --severity=warning lib/*.sh
 
   test:
     name: Test
@@ -37,6 +37,12 @@ jobs:
 
       - name: Install dependencies
         run: sudo apt-get install -y wireguard-tools curl iproute2 iptables
+
+      - name: Install gum
+        run: |
+          GUM_VERSION=$(curl -sL https://api.github.com/repos/charmbracelet/gum/releases/latest | grep '"tag_name"' | sed 's/.*"v\(.*\)".*/\1/')
+          curl -sL "https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/gum_${GUM_VERSION}_amd64.deb" -o /tmp/gum.deb
+          sudo dpkg -i /tmp/gum.deb
 
       - name: Run tests
         run: bats test/*.bats --verbose-run
