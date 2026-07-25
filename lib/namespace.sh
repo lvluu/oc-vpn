@@ -47,6 +47,10 @@ ns_create() {
     iptables -t nat -A POSTROUTING -s 10.200.0.0/24 -o "$dev" -j MASQUERADE \
       -m comment --comment "oc-vpn-${ns}" 2>/dev/null || true
   fi
+
+  # Allow forwarding through UFW (DOCKER-USER → ufw-user-forward path)
+  ufw route allow from 10.200.0.0/24 >/dev/null 2>&1 || true
+  ufw route allow to 10.200.0.0/24 >/dev/null 2>&1 || true
 }
 
 ns_destroy() {
