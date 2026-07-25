@@ -58,6 +58,16 @@ wg_up() {
   ns_exec "$name" ip addr add "$address" dev wg0 2>/dev/null || true
   ns_exec "$name" ip link set mtu 1420 up dev wg0
 
+  # ── Route management ────────────────────────────────────────
+  # Keep veth as a specific route for the WireGuard endpoint (so handshake works)
+  # Then move the default route to go through wg0 (so all traffic uses the tunnel)
+  local endpoint_host; endpoint_host=$(echo "$endpoint" | grep -oP '^\d+\.\d+\.\d+\.\d+' || true)
+  if [[ -n "$endpoint_host" ]]; then
+    ns_exec "$name" ip route add "$endpoint_host/32" via 10.200.0.1 2>/dev/null || true
+  fi
+  # Replace default route: veth → wg0
+  ns_exec "$name" ip route replace default dev wg0 2>/dev/null || true
+
   # ── DNS setup ──────────────────────────────────────────────
   if [[ -n "$dns" ]] && command -v resolvconf &>/dev/null; then
     # resolvconf is available — let it handle DNS
