@@ -34,8 +34,9 @@ check: lint vet test
 # ── Deploy ─────────────────────────────────────────────
 
 deploy: check build
+    # run via: echo '<password>' | sudo -S just deploy
     sudo install -m 755 oc-vpn-go /usr/local/bin/oc-vpn
-    @echo "Done — $(oc-vpn version)"
+    @echo "Done — $(/usr/local/bin/oc-vpn version)"
 
 # ── Release ────────────────────────────────────────────
 
