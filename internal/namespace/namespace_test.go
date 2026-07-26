@@ -91,7 +91,7 @@ func TestSubnetIn200Range(t *testing.T) {
 }
 
 func TestPrefix(t *testing.T) {
-	if prefix != "ocvpn" {
-		t.Errorf("prefix = %q, want ocvpn", prefix)
+	if got := Prefix(); got != "ocvpn" {
+		t.Errorf("Prefix() = %q, want ocvpn", got)
 	}
 }

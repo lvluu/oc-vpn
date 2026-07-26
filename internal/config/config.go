@@ -7,7 +7,19 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 )
+
+func IsDev() bool {
+	return strings.Contains(filepath.Base(os.Args[0]), "-dev")
+}
+
+func AppName() string {
+	if IsDev() {
+		return "oc-vpn-dev"
+	}
+	return "oc-vpn"
+}
 
 const (
 	CurrentVersion = 1
@@ -35,11 +47,11 @@ func Dir() string {
 	}
 	if realUser := os.Getenv("SUDO_USER"); realUser != "" {
 		if u, err := user.Lookup(realUser); err == nil {
-			return filepath.Join(u.HomeDir, ".config", "oc-vpn")
+			return filepath.Join(u.HomeDir, ".config", AppName())
 		}
 	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "oc-vpn")
+	return filepath.Join(home, ".config", AppName())
 }
 
 func Path() string {

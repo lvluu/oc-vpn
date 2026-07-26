@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+echo "=== Pre-commit checks ==="
+
+echo "→ go vet..."
+go vet ./...
+
+echo "→ go test -race..."
+go test -count=1 -race ./...
+
+echo "=== All checks passed ==="

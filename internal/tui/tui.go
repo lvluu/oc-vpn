@@ -126,6 +126,7 @@ func StatusDashboard() {
 		handshake := "-"
 		latency := "-"
 		transfer := "-"
+		watchdog := "-"
 
 		if wireguard.IsUp(name) {
 			statusStr = "UP"
@@ -135,12 +136,22 @@ func StatusDashboard() {
 			transfer = wireguard.Transfer(name)
 		}
 
+		if wi := wireguard.WatchdogStatus(name); wi.Active {
+			watchdog = fmt.Sprintf("active chk=%s fail=%d", wi.LastCheck.Format("15:04:05"), wi.Failures)
+			if !wi.LastOK {
+				watchdog += " FAIL"
+			}
+		}
+
 		fmt.Printf("  ┌─ %s [%s]\n", name, statusStr)
 		fmt.Printf("  │ Endpoint:  %s\n", endpoint)
 		fmt.Printf("  │ Region:    %s\n", region)
 		fmt.Printf("  │ Handshake: %s\n", handshake)
 		fmt.Printf("  │ Latency:   %s\n", latency)
 		fmt.Printf("  │ Transfer:  %s\n", transfer)
+		if watchdog != "-" {
+			fmt.Printf("  │ Watchdog:  %s\n", watchdog)
+		}
 		fmt.Println("  └──")
 		fmt.Println()
 	}

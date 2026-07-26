@@ -10,6 +10,8 @@ oc-vpn is a Go CLI tool that runs opencode through isolated WireGuard VPN tunnel
 - `internal/profiles/` — Profile CRUD under `~/.config/oc-vpn/profiles/`, config parsing, wg-quick field stripping
 - `internal/namespace/` — Network namespace lifecycle (create/destroy/exists), veth pair setup, iptables NAT, UFW rules
 - `internal/wireguard/` — WireGuard operations using `wg set` (not `wg-quick`), DNS setup, IP/geo lookups
+- `internal/wireguard/heartbeat.go` — Watchdog goroutine: periodic health checks, auto-teardown on repeated failure, logs to `~/.config/oc-vpn/heartbeat.log`
+- `internal/logging/` — Simple file-based logger, appends timestamped entries to `~/.config/oc-vpn/heartbeat.log`
 - `internal/doctor/` — System requirement checks (wg, gum, namespaces, curl, root)
 - `internal/tui/` — Terminal UI: profile picker, status dashboard, IP check, import wizard
 
@@ -20,6 +22,7 @@ oc-vpn is a Go CLI tool that runs opencode through isolated WireGuard VPN tunnel
 - **veth naming**: Uses `crypto/md5` hash of namespace name for short veth names (Linux 15-char limit on interface names)
 - **DNS**: Written directly to `/etc/resolv.conf` inside the namespace (not via resolvconf)
 - **Endpoint routing**: The WireGuard endpoint IP gets a specific host route via the veth so the tunnel handshake works, then the default route goes through `wg0`
+- **Watchdog**: When a tunnel is brought up by `run` or `shell`, a background goroutine checks health every 30s (handshake age, ping 1.1.1.1). After 3 consecutive failures, the tunnel is automatically torn down. All checks are logged to `~/.config/oc-vpn/heartbeat.log`.
 
 ## Conventions
 

@@ -1,3 +1,4 @@
+// Package worktree manages project-to-profile associations.
 package worktree
 
 import (

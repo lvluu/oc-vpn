@@ -17,17 +17,12 @@ var (
 	hintStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 )
 
-type pickModel struct {
-	selected  string
+type pickModel struct { //nolint:govet // struct layout is not perf-critical
 	choices   []string
+	selected  string
+	title     string
 	cursor    int
 	cancelled bool
-	title     string
-	titleFn   func() string
-}
-
-type pickConfig struct {
-	title string
 }
 
 func (m pickModel) Init() tea.Cmd { return nil }
