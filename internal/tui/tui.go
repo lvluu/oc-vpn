@@ -5,11 +5,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
-	"syscall"
-
-	"golang.org/x/term"
 
 	"github.com/lvluu/oc-vpn/internal/profiles"
 	"github.com/lvluu/oc-vpn/internal/wireguard"
@@ -25,7 +21,7 @@ func dbg(msg string, args ...any) {
 	}
 }
 
-// PickProfile shows an interactive profile picker.
+// PickProfile shows an interactive profile picker using bubbletea.
 func PickProfile() (string, error) {
 	names := profiles.List()
 	dbg("PickProfile: found %d profiles", len(names))
@@ -38,124 +34,7 @@ func PickProfile() (string, error) {
 		return names[0], nil
 	}
 
-	return pickProfileArrow(names)
-}
-
-func pickProfileArrow(names []string) (string, error) {
-	fd := int(os.Stdin.Fd())
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		return pickProfileNumbered(names)
-	}
-	defer func() {
-		// Flush the kernel input queue so stale escape sequences
-		// don't leak into the calling TUI (e.g. opencode).
-		const TIOCFLUSH = 0x5410
-		const TCIFLUSH = 0
-		_, _, _ = syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), TIOCFLUSH, TCIFLUSH)
-		_ = term.Restore(fd, oldState)
-		fmt.Print("\033[?25h") // ensure cursor is visible
-	}()
-
-	selected := 0
-
-	for {
-		fmt.Print("\033[2J\033[H")
-		fmt.Println()
-		fmt.Println("  \033[1mSelect profile:\033[0m")
-		fmt.Println()
-
-		for i, name := range names {
-			if i == selected {
-				fmt.Printf("  \033[36m▸ %s\033[0m\n", name)
-			} else {
-				fmt.Printf("    %s\n", name)
-			}
-		}
-
-		fmt.Println()
-		fmt.Println("  \033[90m↑/↓ navigate   ↵ select   q cancel\033[0m")
-
-		buf := make([]byte, 16)
-		n, err := os.Stdin.Read(buf)
-		if err != nil {
-			return "", fmt.Errorf("reading key: %w", err)
-		}
-
-		if n == 1 {
-			switch buf[0] {
-			case 13, 10:
-				fmt.Print("\033[2J\033[H")
-				fmt.Printf("  \033[32m✓\033[0m %s\n", names[selected])
-				return names[selected], nil
-			case 3, 113: // Ctrl+C, q
-				fmt.Print("\033[2J\033[H")
-				return "", fmt.Errorf("selection cancelled")
-			case 27: // bare ESC — could be start of arrow sequence, try reading more
-				if n2, err2 := os.Stdin.Read(buf[1:]); err2 == nil && n2 >= 2 && buf[1] == 91 {
-					// it's an escape sequence — fall through to sequence handler below
-					n = 1 + n2
-					goto sequence
-				}
-				// bare ESC pressed
-				fmt.Print("\033[2J\033[H")
-				return "", fmt.Errorf("selection cancelled")
-			case 106: // j
-				if selected < len(names)-1 {
-					selected++
-				}
-			case 107: // k
-				if selected > 0 {
-					selected--
-				}
-			}
-		}
-
-	sequence:
-		if n == 3 && buf[0] == 27 && buf[1] == 91 {
-			switch buf[2] {
-			case 65:
-				if selected > 0 {
-					selected--
-				}
-			case 66:
-				if selected < len(names)-1 {
-					selected++
-				}
-			}
-		}
-	}
-}
-
-func pickProfileNumbered(names []string) (string, error) {
-	fmt.Println()
-	fmt.Println("Select profile:")
-	fmt.Println()
-
-	for i, name := range names {
-		fmt.Printf("  \033[36m%d\033[0m) %s\n", i+1, name)
-	}
-
-	fmt.Println()
-	fmt.Print("  \033[90m>\033[0m ")
-
-	input, err := reader.ReadString('\n')
-	if err != nil {
-		return "", fmt.Errorf("reading input: %w", err)
-	}
-	input = strings.TrimSpace(input)
-
-	if input == "" {
-		return "", fmt.Errorf("no selection")
-	}
-
-	idx, err := strconv.Atoi(input)
-	if err != nil || idx < 1 || idx > len(names) {
-		return "", fmt.Errorf("invalid selection: %s", input)
-	}
-
-	fmt.Printf("  \033[32m✓\033[0m %s\n", names[idx-1])
-	return names[idx-1], nil
+	return pickProfileBubbletea(names)
 }
 
 // Confirm prompts the user for yes/no.
