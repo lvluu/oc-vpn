@@ -253,6 +253,39 @@ func Latency(name string) string {
 	return "?ms"
 }
 
+// WaitForHandshake blocks until a WireGuard handshake is detected.
+// It polls "wg show wg0 latest-handshakes" every second until timeout.
+func WaitForHandshake(name string, timeout time.Duration) error {
+	if !IsUp(name) {
+		return fmt.Errorf("tunnel %s is not up", name)
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		out, _ := namespace.Exec(name, "wg", "show", "wg0", "latest-handshakes")
+		if parseHandshake(out) > 0 {
+			return nil
+		}
+		time.Sleep(1 * time.Second)
+	}
+	return fmt.Errorf("handshake not established within %v", timeout)
+}
+
+// CheckConnectivity verifies the tunnel passes traffic and returns the public IP.
+func CheckConnectivity(name string) (string, error) {
+	if !IsUp(name) {
+		return "", fmt.Errorf("tunnel %s is not up", name)
+	}
+	out, err := namespace.Exec(name, "curl", "-s", "--max-time", "10", "https://ifconfig.me")
+	if err != nil {
+		return "", fmt.Errorf("connectivity check failed: %w", err)
+	}
+	ip := strings.TrimSpace(out)
+	if ip == "" {
+		return "", fmt.Errorf("connectivity check returned empty response")
+	}
+	return ip, nil
+}
+
 // PublicIP queries the public IP through the tunnel.
 func PublicIP(name string) string {
 	if !IsUp(name) {
