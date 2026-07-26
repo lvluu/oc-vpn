@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lvluu/oc-vpn/internal/namespace"
 	"github.com/lvluu/oc-vpn/internal/profiles"
 	"github.com/lvluu/oc-vpn/internal/wireguard"
 )
@@ -121,19 +122,38 @@ func StatusDashboard() {
 
 	for _, name := range names {
 		statusStr := "DOWN"
-		endpoint, _ := profiles.Endpoint(name)
+		endpoint := "-"
 		region := "-"
 		handshake := "-"
 		latency := "-"
 		transfer := "-"
 		watchdog := "-"
+		routeOK := "?"
+		dnsOK := "?"
+		publicIP := "-"
 
 		if wireguard.IsUp(name) {
-			statusStr = "UP"
+			statusStr = wireguard.Status(name)
 			endpoint = wireguard.Endpoint(name)
 			handshake = wireguard.HandshakeAgo(name)
 			latency = wireguard.Latency(name)
 			transfer = wireguard.Transfer(name)
+
+			out, _ := namespace.Exec(name, "ip", "route", "show", "default")
+			if strings.Contains(out, "wg0") {
+				routeOK = "yes"
+			} else {
+				routeOK = "no"
+			}
+
+			out, _ = namespace.Exec(name, "cat", "/etc/resolv.conf")
+			if strings.Contains(out, "nameserver") {
+				dnsOK = "yes"
+			} else {
+				dnsOK = "no"
+			}
+
+			publicIP = wireguard.PublicIP(name)
 		}
 
 		if wi := wireguard.WatchdogStatus(name); wi.Active {
@@ -149,6 +169,9 @@ func StatusDashboard() {
 		fmt.Printf("  │ Handshake: %s\n", handshake)
 		fmt.Printf("  │ Latency:   %s\n", latency)
 		fmt.Printf("  │ Transfer:  %s\n", transfer)
+		fmt.Printf("  │ Route:     %s\n", routeOK)
+		fmt.Printf("  │ DNS:       %s\n", dnsOK)
+		fmt.Printf("  │ Public IP: %s\n", publicIP)
 		if watchdog != "-" {
 			fmt.Printf("  │ Watchdog:  %s\n", watchdog)
 		}
