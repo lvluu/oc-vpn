@@ -14,16 +14,17 @@ func TestLogPath(t *testing.T) {
 	}
 }
 
-func testHomeDir(t *testing.T) string {
+func testConfigDir(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	return home
+	cfgDir := filepath.Join(home, ".config", "oc-vpn")
+	t.Setenv("OC_VPN_CONFIG_DIR", cfgDir)
+	return cfgDir
 }
 
 func TestWrite(t *testing.T) {
-	home := testHomeDir(t)
-	logFile := filepath.Join(home, ".config", "oc-vpn", "heartbeat.log")
+	cfgDir := testConfigDir(t)
+	logFile := filepath.Join(cfgDir, "heartbeat.log")
 
 	Write("test entry one")
 	Write("test entry two")
@@ -53,8 +54,8 @@ func TestWrite(t *testing.T) {
 }
 
 func TestWriteAppends(t *testing.T) {
-	home := testHomeDir(t)
-	logFile := filepath.Join(home, ".config", "oc-vpn", "heartbeat.log")
+	cfgDir := testConfigDir(t)
+	logFile := filepath.Join(cfgDir, "heartbeat.log")
 
 	Write("first")
 	Write("second")
@@ -68,7 +69,7 @@ func TestWriteAppends(t *testing.T) {
 }
 
 func TestWriteEmptyEntry(t *testing.T) {
-	_ = testHomeDir(t)
+	_ = testConfigDir(t)
 
 	Write("")
 

@@ -34,9 +34,9 @@ check: lint vet test
 # ── Deploy ─────────────────────────────────────────────
 
 deploy: check build
-    # run via: echo '<password>' | sudo -S just deploy
-    sudo install -m 755 oc-vpn /usr/local/bin/oc-vpn-dev
-    @echo "Done — $(/usr/local/bin/oc-vpn-dev version)"
+    @mkdir -p "$(go env GOPATH)/bin"
+    cp oc-vpn "$(go env GOPATH)/bin/oc-vpn-dev"
+    @echo "Done — $(go env GOPATH)/bin/oc-vpn-dev"
 
 # ── Release ────────────────────────────────────────────
 
