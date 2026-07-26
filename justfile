@@ -6,10 +6,10 @@ ldflags := "-s -w -X main.version={{version}} -X main.commit={{commit}} -X main.
 # ── Build ──────────────────────────────────────────────
 
 build:
-    go build -ldflags '{{ldflags}}' -o oc-vpn-go ./cmd/oc-vpn
+    go build -ldflags '{{ldflags}}' -o oc-vpn ./cmd/oc-vpn
 
 clean:
-    rm -f oc-vpn-go
+    rm -f oc-vpn
 
 # ── Quality ────────────────────────────────────────────
 
@@ -35,8 +35,8 @@ check: lint vet test
 
 deploy: check build
     # run via: echo '<password>' | sudo -S just deploy
-    sudo install -m 755 oc-vpn-go /usr/local/bin/oc-vpn
-    @echo "Done — $(/usr/local/bin/oc-vpn version)"
+    sudo install -m 755 oc-vpn /usr/local/bin/oc-vpn-dev
+    @echo "Done — $(/usr/local/bin/oc-vpn-dev version)"
 
 # ── Release ────────────────────────────────────────────
 

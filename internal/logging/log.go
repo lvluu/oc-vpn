@@ -6,16 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/lvluu/oc-vpn/internal/config"
 )
 
-const logDir = ".config/oc-vpn"
-
 func logPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "/tmp/oc-vpn-heartbeat.log"
-	}
-	return filepath.Join(home, logDir, "heartbeat.log")
+	return filepath.Join(config.Dir(), "heartbeat.log")
 }
 
 func Write(entry string) {

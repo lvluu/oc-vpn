@@ -9,16 +9,22 @@ import (
 
 func TestLogPath(t *testing.T) {
 	p := logPath()
-	if !strings.HasSuffix(p, ".config/oc-vpn/heartbeat.log") && !strings.HasSuffix(p, "heartbeat.log") {
+	if !strings.HasSuffix(p, "heartbeat.log") {
 		t.Errorf("logPath() = %q, want ...heartbeat.log", p)
 	}
 }
 
+func testHomeDir(t *testing.T) string {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	return home
+}
+
 func TestWrite(t *testing.T) {
-	home, _ := os.UserHomeDir()
+	home := testHomeDir(t)
 	logFile := filepath.Join(home, ".config", "oc-vpn", "heartbeat.log")
 
-	_ = os.Remove(logFile)
 	Write("test entry one")
 	Write("test entry two")
 
@@ -44,15 +50,12 @@ func TestWrite(t *testing.T) {
 	if !strings.Contains(lines[1], "test entry two") {
 		t.Errorf("line 1 missing 'test entry two': %q", lines[1])
 	}
-
-	_ = os.Remove(logFile)
 }
 
 func TestWriteAppends(t *testing.T) {
-	home, _ := os.UserHomeDir()
+	home := testHomeDir(t)
 	logFile := filepath.Join(home, ".config", "oc-vpn", "heartbeat.log")
 
-	_ = os.Remove(logFile)
 	Write("first")
 	Write("second")
 	Write("third")
@@ -62,22 +65,16 @@ func TestWriteAppends(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("expected 3 lines after 3 writes, got %d", len(lines))
 	}
-
-	_ = os.Remove(logFile)
 }
 
 func TestWriteEmptyEntry(t *testing.T) {
-	home, _ := os.UserHomeDir()
-	logFile := filepath.Join(home, ".config", "oc-vpn", "heartbeat.log")
+	_ = testHomeDir(t)
 
-	_ = os.Remove(logFile)
 	Write("")
 
-	data, _ := os.ReadFile(logFile)
+	data, _ := os.ReadFile(logPath())
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 	if len(lines) < 1 {
 		t.Fatal("expected at least 1 line")
 	}
-
-	_ = os.Remove(logFile)
 }

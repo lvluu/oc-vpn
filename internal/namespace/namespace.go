@@ -8,9 +8,16 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/lvluu/oc-vpn/internal/config"
 )
 
-const prefix = "ocvpn"
+func Prefix() string {
+	if config.IsDev() {
+		return "ocvpn-dev"
+	}
+	return "ocvpn"
+}
 
 // Subnet returns the unique /24 subnet details for a profile.
 // Host (veth) gets .1, namespace gets .2, gateway for namespace is host.
@@ -62,7 +69,7 @@ func FormatPort(profile string) string {
 
 // Name returns the namespace name for a profile.
 func Name(profile string) string {
-	return fmt.Sprintf("%s-%s", prefix, profile)
+	return fmt.Sprintf("%s-%s", Prefix(), profile)
 }
 
 // Exists checks if a namespace exists.
