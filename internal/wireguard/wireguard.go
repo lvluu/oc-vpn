@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lvluu/oc-vpn/internal/logging"
 	"github.com/lvluu/oc-vpn/internal/namespace"
 	"github.com/lvluu/oc-vpn/internal/profiles"
 )
@@ -134,6 +135,7 @@ func Up(name string) error {
 	_, _ = namespace.Exec(name, "bash", "-c",
 		fmt.Sprintf("echo '%s' > /etc/resolv.conf", strings.TrimSpace(dnsContent.String())))
 
+	logging.Write(fmt.Sprintf("%s: up (endpoint=%s)", name, cfg.Endpoint))
 	return nil
 }
 
@@ -142,6 +144,7 @@ func Down(name string) {
 	if !namespace.Exists(name) {
 		return
 	}
+	logging.Write(fmt.Sprintf("%s: down", name))
 	namespace.Destroy(name)
 }
 

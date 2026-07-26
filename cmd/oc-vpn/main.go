@@ -13,6 +13,7 @@ import (
 
 	"github.com/lvluu/oc-vpn/internal/config"
 	"github.com/lvluu/oc-vpn/internal/doctor"
+	"github.com/lvluu/oc-vpn/internal/logging"
 	"github.com/lvluu/oc-vpn/internal/namespace"
 	"github.com/lvluu/oc-vpn/internal/profiles"
 	"github.com/lvluu/oc-vpn/internal/tui"
@@ -55,6 +56,8 @@ func main() {
 		cmdShell(args)
 	case "status":
 		cmdStatus(args)
+	case "heartbeat", "monitor":
+		cmdHeartbeat(args)
 	case "cleanup":
 		cmdCleanup(args)
 	case "ip":
@@ -98,6 +101,7 @@ Commands:
   run [name] [cmd...]             Run a command in a tunnel
   shell [name]                    Open an interactive shell in a tunnel
   status                          Show status of all profiles
+  heartbeat [interval]            Log tunnel status periodically (~/.config/oc-vpn/heartbeat.log)
   ip [name]                       Check public IP for a profile
   export <name>                   Export a profile config to stdout
   remove <name>                   Delete a profile
@@ -342,6 +346,7 @@ loop:
 	}
 
 	broughtUp := false
+	var stopWatchdog func()
 
 	// Handle Ctrl+C gracefully
 	sigChan := make(chan os.Signal, 1)
@@ -349,6 +354,9 @@ loop:
 	go func() {
 		<-sigChan
 		fmt.Fprintf(os.Stderr, "\nInterrupted.\n")
+		if stopWatchdog != nil {
+			stopWatchdog()
+		}
 		if downOnExit && broughtUp {
 			if promptConfirm(fmt.Sprintf("Tear down tunnel '%s'?", name)) {
 				fmt.Fprintf(os.Stderr, "Tearing down %s...\n", name)
@@ -372,11 +380,16 @@ loop:
 		} else if publicIP, err := wireguard.CheckConnectivity(name); err == nil {
 			fmt.Fprintf(os.Stderr, "Tunnel is up (public IP: %s)\n", publicIP)
 		}
+		stopWatchdog = wireguard.Watchdog(name, true)
 	}
 
 	if err := namespace.ExecAsUser(name, cmd...); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		exitCode = 1
+	}
+
+	if stopWatchdog != nil {
+		stopWatchdog()
 	}
 
 	if downOnExit && broughtUp {
@@ -438,11 +451,14 @@ func cmdShell(args []string) {
 
 	fmt.Printf("Entering shell in %s namespace. Type 'exit' to leave.\n", name)
 
+	stopWatchdog := wireguard.Watchdog(name, true)
+
 	// Handle Ctrl+C gracefully — only tear down if --down-on-exit
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
+		stopWatchdog()
 		fmt.Printf("\nExiting %s shell.\n", name)
 		if downOnExit {
 			wireguard.Down(name)
@@ -460,6 +476,8 @@ func cmdShell(args []string) {
 		os.Exit(1)
 	}
 
+	stopWatchdog()
+
 	if downOnExit {
 		wireguard.Down(name)
 	}
@@ -467,6 +485,80 @@ func cmdShell(args []string) {
 
 func cmdStatus(_ []string) {
 	tui.StatusDashboard()
+}
+
+func cmdHeartbeat(args []string) {
+	interval := 30
+	if len(args) > 0 {
+		if v, err := strconv.Atoi(args[0]); err == nil && v > 0 {
+			interval = v
+		}
+	}
+
+	fmt.Printf("Heartbeat logging every %ds to ~/.config/oc-vpn/heartbeat.log\n", interval)
+	fmt.Println("Press Ctrl+C to stop.")
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	for {
+		names := profiles.List()
+		for _, name := range names {
+			var statusStr string
+			endpoint := "-"
+			handshake := "-"
+			latency := "-"
+			transfer := "-"
+			publicIP := "-"
+			routeOK := "?"
+			dnsOK := "?"
+
+			if namespace.Exists(name) {
+				if wireguard.IsUp(name) {
+					statusStr = "UP"
+					handshake = wireguard.HandshakeAgo(name)
+					latency = wireguard.Latency(name)
+					transfer = wireguard.Transfer(name)
+					endpoint = wireguard.Endpoint(name)
+
+					if out, _ := namespace.Exec(name, "ip", "route", "show", "default"); strings.Contains(out, "wg0") {
+						routeOK = "yes"
+					} else {
+						routeOK = "no"
+					}
+
+					if out, _ := namespace.Exec(name, "cat", "/etc/resolv.conf"); strings.Contains(out, "nameserver") {
+						dnsOK = "yes"
+					} else {
+						dnsOK = "no"
+					}
+
+					if ip, err := wireguard.CheckConnectivity(name); err == nil {
+						publicIP = ip
+					} else {
+						publicIP = "unreachable"
+					}
+				} else {
+					statusStr = "DOWN(wg0)"
+				}
+			} else {
+				statusStr = "DOWN(ns)"
+			}
+
+			entry := fmt.Sprintf("%s status=%s endpoint=%s handshake=%s latency=%s transfer=%s route=%s dns=%s ip=%s",
+				name, statusStr, endpoint, handshake, latency, transfer, routeOK, dnsOK, publicIP)
+			logging.Write(entry)
+
+			fmt.Printf("[%s] %s\n", name, statusStr)
+		}
+
+		select {
+		case <-sigChan:
+			fmt.Println("\nHeartbeat stopped.")
+			return
+		case <-time.After(time.Duration(interval) * time.Second):
+		}
+	}
 }
 
 func cmdIP(args []string) {
