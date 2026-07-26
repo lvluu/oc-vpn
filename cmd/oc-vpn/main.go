@@ -6,10 +6,12 @@ import (
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/lvluu/oc-vpn/internal/config"
 	"github.com/lvluu/oc-vpn/internal/doctor"
 	"github.com/lvluu/oc-vpn/internal/namespace"
 	"github.com/lvluu/oc-vpn/internal/profiles"
@@ -62,6 +64,10 @@ func main() {
 		cmdRemove(args)
 	case "doctor":
 		cmdDoctor()
+	case "config":
+		cmdConfig(args)
+	case "default":
+		cmdDefault(args)
 	case "version", "-v", "--version":
 		fmt.Printf("oc-vpn %s %s (%s)\n%s/%s\n", version, commit, date, runtime.GOOS, runtime.GOARCH)
 	case "help", "-h", "--help":
@@ -76,7 +82,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`oc-vpn — Run opencode through isolated WireGuard tunnels
+	fmt.Println(`oc-vpn — Isolated WireGuard VPN tunnels
 
 Usage:
   oc-vpn <command> [options]
@@ -84,14 +90,16 @@ Usage:
 Commands:
   import <config.conf> -n <name>   Import a WireGuard config file
   list | ls                       List all profiles
-  up <name>                       Connect to a profile
-  down <name>                     Disconnect a profile
-  run <name> [cmd...]             Run a command in a tunnel
-  shell <name>                    Open an interactive shell in a tunnel
+  up [name]                       Connect to a profile (uses default if set)
+  down [name]                     Disconnect a profile
+  run [name] [cmd...]             Run a command in a tunnel
+  shell [name]                    Open an interactive shell in a tunnel
   status                          Show status of all profiles
-  ip <name>                       Check public IP for a profile
+  ip [name]                       Check public IP for a profile
   export <name>                   Export a profile config to stdout
   remove <name>                   Delete a profile
+  default [name]                  Show or set the default profile
+  config [get|set <key> <val>]    View or modify global settings
   doctor                          Check system requirements
   version                         Show version
 
@@ -110,14 +118,15 @@ Flags:
 
 Examples:
   oc-vpn import config.conf -n us-east
-  oc-vpn up us-east
-  oc-vpn run us-east curl ifconfig.me
+  oc-vpn default us-east
+  oc-vpn up
+  oc-vpn run curl ifconfig.me
   oc-vpn run --down-on-exit us-east npm test
-  oc-vpn shell us-east
+  oc-vpn shell
   oc-vpn shell --down-on-exit us-east
   oc-vpn status
-  oc-vpn ip us-east
-  oc-vpn export us-east | wg-quick up -`)
+  oc-vpn ip
+  oc-vpn export us-east`)
 }
 
 func requireRoot() {
@@ -199,12 +208,18 @@ func cmdList(args []string) {
 }
 
 func cmdUp(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: oc-vpn up <name> | oc-vpn up (interactive picker)")
-		os.Exit(1)
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
 	}
-
-	name := args[0]
+	if name == "" {
+		cfg, err := config.Load()
+		if err == nil && cfg.DefaultProfile != "" {
+			if profiles.Exists(cfg.DefaultProfile) {
+				name = cfg.DefaultProfile
+			}
+		}
+	}
 	if name == "" {
 		var err error
 		name, err = tui.PickProfile()
@@ -237,12 +252,18 @@ func cmdUp(args []string) {
 }
 
 func cmdDown(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "Usage: oc-vpn down <name> | oc-vpn down (interactive picker)")
-		os.Exit(1)
+	name := ""
+	if len(args) > 0 {
+		name = args[0]
 	}
-
-	name := args[0]
+	if name == "" {
+		cfg, err := config.Load()
+		if err == nil && cfg.DefaultProfile != "" {
+			if profiles.Exists(cfg.DefaultProfile) {
+				name = cfg.DefaultProfile
+			}
+		}
+	}
 	if name == "" {
 		var err error
 		name, err = tui.PickProfile()
@@ -278,6 +299,12 @@ loop:
 		}
 	}
 
+	if name == "" {
+		cfg, err := config.Load()
+		if err == nil && cfg.DefaultProfile != "" && profiles.Exists(cfg.DefaultProfile) {
+			name = cfg.DefaultProfile
+		}
+	}
 	if name == "" {
 		var err error
 		name, err = tui.PickProfile()
@@ -346,7 +373,14 @@ func cmdShell(args []string) {
 
 	if len(filtered) > 0 {
 		name = filtered[0]
-	} else {
+	}
+	if name == "" {
+		cfg, err := config.Load()
+		if err == nil && cfg.DefaultProfile != "" && profiles.Exists(cfg.DefaultProfile) {
+			name = cfg.DefaultProfile
+		}
+	}
+	if name == "" {
 		var err error
 		name, err = tui.PickProfile()
 		if err != nil {
@@ -396,10 +430,17 @@ func cmdStatus(_ []string) {
 }
 
 func cmdIP(args []string) {
-	var name string
+	name := ""
 	if len(args) > 0 {
 		name = args[0]
-	} else {
+	}
+	if name == "" {
+		cfg, err := config.Load()
+		if err == nil && cfg.DefaultProfile != "" && profiles.Exists(cfg.DefaultProfile) {
+			name = cfg.DefaultProfile
+		}
+	}
+	if name == "" {
 		var err error
 		name, err = tui.PickProfile()
 		if err != nil {
@@ -500,6 +541,179 @@ func cmdDoctor() {
 	} else {
 		fmt.Println("✓ All checks passed.")
 	}
+}
+
+func cmdConfig(args []string) {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(args) == 0 {
+		fmt.Println("Settings:")
+		fmt.Printf("  default_profile:   %s\n", orDash(cfg.DefaultProfile))
+		fmt.Println("  preferences:")
+		if cfg.Preferences.CheckIPOnConnect != nil {
+			fmt.Printf("    check_ip_on_connect: %t\n", *cfg.Preferences.CheckIPOnConnect)
+		}
+		if cfg.Preferences.AutoConnect != nil {
+			fmt.Printf("    auto_connect:        %t\n", *cfg.Preferences.AutoConnect)
+		}
+		if cfg.Preferences.KeepaliveDefault != nil {
+			fmt.Printf("    keepalive_default:   %d\n", *cfg.Preferences.KeepaliveDefault)
+		}
+		if cfg.Preferences.MTUDefault != nil {
+			fmt.Printf("    mtu_default:         %d\n", *cfg.Preferences.MTUDefault)
+		}
+		fmt.Printf("  config path: %s\n", config.Path())
+		return
+	}
+
+	sub := args[0]
+	switch sub {
+	case "get":
+		if len(args) < 2 {
+			fmt.Fprintln(os.Stderr, "Usage: oc-vpn config get <key>")
+			os.Exit(1)
+		}
+		printConfigValue(cfg, args[1])
+	case "set":
+		if len(args) < 3 {
+			fmt.Fprintln(os.Stderr, "Usage: oc-vpn config set <key> <value>")
+			os.Exit(1)
+		}
+		setConfigValue(cfg, args[1], args[2])
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown config subcommand: %s\n", sub)
+		os.Exit(1)
+	}
+}
+
+func printConfigValue(cfg *config.Config, key string) {
+	switch key {
+	case "default_profile":
+		fmt.Println(cfg.DefaultProfile)
+	case "check_ip_on_connect":
+		if cfg.Preferences.CheckIPOnConnect != nil {
+			fmt.Println(*cfg.Preferences.CheckIPOnConnect)
+		} else {
+			fmt.Println("true")
+		}
+	case "auto_connect":
+		if cfg.Preferences.AutoConnect != nil {
+			fmt.Println(*cfg.Preferences.AutoConnect)
+		} else {
+			fmt.Println("true")
+		}
+	case "keepalive_default":
+		if cfg.Preferences.KeepaliveDefault != nil {
+			fmt.Println(*cfg.Preferences.KeepaliveDefault)
+		} else {
+			fmt.Println("25")
+		}
+	case "mtu_default":
+		if cfg.Preferences.MTUDefault != nil {
+			fmt.Println(*cfg.Preferences.MTUDefault)
+		} else {
+			fmt.Println("1420")
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
+		os.Exit(1)
+	}
+}
+
+func setConfigValue(cfg *config.Config, key, value string) {
+	switch key {
+	case "default_profile":
+		if err := cfg.SetDefault(value); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+	case "check_ip_on_connect":
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "invalid boolean: %s\n", value)
+			os.Exit(1)
+		}
+		cfg.Preferences.CheckIPOnConnect = &v
+	case "auto_connect":
+		v, err := strconv.ParseBool(value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "invalid boolean: %s\n", value)
+			os.Exit(1)
+		}
+		cfg.Preferences.AutoConnect = &v
+	case "keepalive_default":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "invalid integer: %s\n", value)
+			os.Exit(1)
+		}
+		cfg.Preferences.KeepaliveDefault = &v
+	case "mtu_default":
+		v, err := strconv.Atoi(value)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "invalid integer: %s\n", value)
+			os.Exit(1)
+		}
+		cfg.Preferences.MTUDefault = &v
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown config key: %s\n", key)
+		os.Exit(1)
+	}
+	if err := cfg.Save(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error saving config: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ %s set to %s\n", key, value)
+}
+
+func cmdDefault(args []string) {
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(args) == 0 {
+		if cfg.DefaultProfile == "" {
+			fmt.Println("No default profile set.")
+		} else {
+			fmt.Printf("Default profile: %s\n", cfg.DefaultProfile)
+		}
+		return
+	}
+
+	name := args[0]
+	if name == "--clear" {
+		cfg.ClearDefault()
+		if err := cfg.Save(); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("✓ Default profile cleared.")
+		return
+	}
+
+	if !profiles.Exists(name) {
+		fmt.Fprintf(os.Stderr, "Error: profile '%s' not found\n", name)
+		os.Exit(1)
+	}
+
+	if err := cfg.SetDefault(name); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ Default profile set to '%s'\n", name)
+}
+
+func orDash(s string) string {
+	if s == "" {
+		return "-"
+	}
+	return s
 }
 
 func cmdCleanup(args []string) {
