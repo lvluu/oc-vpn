@@ -106,12 +106,15 @@ Flags:
   --private-key <key>             Override private key (import)
   --address <cidr>                Override interface address (import)
   -y, --yes                       Skip confirmation prompts
+  --down-on-exit                  Tear down tunnel when command/shell exits (run, shell)
 
 Examples:
   oc-vpn import config.conf -n us-east
   oc-vpn up us-east
   oc-vpn run us-east curl ifconfig.me
+  oc-vpn run --down-on-exit us-east npm test
   oc-vpn shell us-east
+  oc-vpn shell --down-on-exit us-east
   oc-vpn status
   oc-vpn ip us-east
   oc-vpn export us-east | wg-quick up -`)
@@ -258,14 +261,13 @@ func cmdRun(args []string) {
 
 	name := ""
 	var cmd []string
-	keepAlive := false
+	downOnExit := false
 
-	// Parse flags
 loop:
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--keep", "-k":
-			keepAlive = true
+		case "--down-on-exit":
+			downOnExit = true
 		default:
 			if name == "" {
 				name = args[i]
@@ -290,23 +292,16 @@ loop:
 		cmd = []string{"opencode"}
 	}
 
-	// Auto-teardown on exit unless --keep
-	defer func() {
-		if !keepAlive {
-			fmt.Fprintf(os.Stderr, "\nTearing down %s...\n", name)
-			wireguard.Down(name)
-		} else {
-			fmt.Fprintf(os.Stderr, "\nTunnel %s still running. Use: oc-vpn down %s\n", name, name)
-		}
-	}()
-
 	// Handle Ctrl+C gracefully
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		fmt.Fprintf(os.Stderr, "\nInterrupted. Tearing down %s...\n", name)
-		wireguard.Down(name)
+		fmt.Fprintf(os.Stderr, "\nInterrupted.\n")
+		if downOnExit {
+			fmt.Fprintf(os.Stderr, "Tearing down %s...\n", name)
+			wireguard.Down(name)
+		}
 		os.Exit(0)
 	}()
 
@@ -327,14 +322,30 @@ loop:
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		exitCode = 1
 	}
+
+	if downOnExit {
+		fmt.Fprintf(os.Stderr, "\nTearing down %s...\n", name)
+		wireguard.Down(name)
+	}
 }
 
 func cmdShell(args []string) {
 	requireRoot()
 
 	name := ""
-	if len(args) > 0 {
-		name = args[0]
+	downOnExit := false
+
+	var filtered []string
+	for _, a := range args {
+		if a == "--down-on-exit" {
+			downOnExit = true
+		} else {
+			filtered = append(filtered, a)
+		}
+	}
+
+	if len(filtered) > 0 {
+		name = filtered[0]
 	} else {
 		var err error
 		name, err = tui.PickProfile()
@@ -353,13 +364,15 @@ func cmdShell(args []string) {
 
 	fmt.Printf("Entering shell in %s namespace. Type 'exit' to leave.\n", name)
 
-	// Handle Ctrl+C gracefully
+	// Handle Ctrl+C gracefully — only tear down if --down-on-exit
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
 		fmt.Printf("\nExiting %s shell.\n", name)
-		wireguard.Down(name)
+		if downOnExit {
+			wireguard.Down(name)
+		}
 		os.Exit(0)
 	}()
 
@@ -373,7 +386,9 @@ func cmdShell(args []string) {
 		os.Exit(1)
 	}
 
-	wireguard.Down(name)
+	if downOnExit {
+		wireguard.Down(name)
+	}
 }
 
 func cmdStatus(_ []string) {
