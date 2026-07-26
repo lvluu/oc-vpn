@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/lvluu/oc-vpn/internal/doctor"
 	"github.com/lvluu/oc-vpn/internal/namespace"
@@ -210,16 +211,25 @@ func cmdUp(args []string) {
 		}
 	}
 
-	fmt.Printf("Connecting to %s...\n", name)
+	fmt.Printf("Connecting to %s...", name)
 	if err := wireguard.Up(name); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
 		os.Exit(1)
 	}
+	fmt.Println(" ✓")
 
-	if wireguard.IsUp(name) {
-		fmt.Printf("✓ Connected to %s\n", name)
+	fmt.Print("Waiting for handshake...")
+	if err := wireguard.WaitForHandshake(name, 15*time.Second); err != nil {
+		fmt.Fprintf(os.Stderr, "\nWarning: %v\n", err)
 	} else {
-		fmt.Println("Note: handshake may take a few seconds")
+		fmt.Println(" ✓")
+		fmt.Print("Checking connectivity...")
+		publicIP, err := wireguard.CheckConnectivity(name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\nWarning: %v\n", err)
+		} else {
+			fmt.Printf(" ✓ (public IP: %s)\n", publicIP)
+		}
 	}
 }
 
@@ -305,6 +315,11 @@ loop:
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			exitCode = 1
 			return
+		}
+		if err := wireguard.WaitForHandshake(name, 15*time.Second); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+		} else if publicIP, err := wireguard.CheckConnectivity(name); err == nil {
+			fmt.Fprintf(os.Stderr, "Tunnel is up (public IP: %s)\n", publicIP)
 		}
 	}
 
