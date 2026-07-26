@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/lvluu/oc-vpn/internal/config"
 	"github.com/lvluu/oc-vpn/internal/profiles"
 )
 
@@ -93,6 +94,13 @@ func Run() []Check {
 		checks = append(checks, Check{"profiles dir", "ok", fmt.Sprintf("%s (%d profiles)", dir, count)})
 	} else {
 		checks = append(checks, Check{"profiles dir", "warn", fmt.Sprintf("%s (will be created on first import)", dir)})
+	}
+
+	// Config
+	if _, err := config.Load(); err == nil {
+		checks = append(checks, Check{"config", "ok", config.Path()})
+	} else {
+		checks = append(checks, Check{"config", "warn", fmt.Sprintf("%s — %v", config.Path(), err)})
 	}
 
 	return checks

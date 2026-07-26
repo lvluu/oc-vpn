@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/lvluu/oc-vpn/internal/config"
 )
 
 var validName = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
@@ -45,23 +46,10 @@ type WGConfig struct {
 	Keepalive  string
 }
 
-// Dir returns the profiles directory, preferring $OC_VPN_PROFILES_DIR,
-// falling back to the real user's ~/.config/oc-vpn/profiles.
+// Dir returns the profiles directory.
+// Prefers $OC_VPN_PROFILES_DIR, falls back to ~/.config/oc-vpn/profiles.
 func Dir() string {
-	if d := os.Getenv("OC_VPN_PROFILES_DIR"); d != "" {
-		return d
-	}
-
-	// When running via sudo, $HOME points to root's home.
-	// Use SUDO_USER's home instead.
-	if realUser := os.Getenv("SUDO_USER"); realUser != "" {
-		if u, err := user.Lookup(realUser); err == nil {
-			return filepath.Join(u.HomeDir, ".config", "oc-vpn", "profiles")
-		}
-	}
-
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "oc-vpn", "profiles")
+	return config.ProfilesDir()
 }
 
 // ValidateName checks that a profile name contains only safe characters.
