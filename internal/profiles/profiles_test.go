@@ -1,6 +1,7 @@
 package profiles
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -312,5 +313,79 @@ AllowedIPs = 0.0.0.0/0
 func TestParseConfigMissingFile(t *testing.T) {
 	if _, err := ParseConfig("/nonexistent/file.conf"); err == nil {
 		t.Error("ParseConfig() should fail for missing file")
+	}
+}
+
+func TestChownToRealUser(t *testing.T) {
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(tmpFile, []byte("test"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// No sudo env vars — should be no-op
+	if err := chownToRealUser(tmpFile); err != nil {
+		t.Errorf("without sudo vars: %v", err)
+	}
+
+	// SUDO_UID/SUDO_GID set to current process — chown to self succeeds
+	t.Setenv("SUDO_UID", fmt.Sprintf("%d", os.Getuid()))
+	t.Setenv("SUDO_GID", fmt.Sprintf("%d", os.Getgid()))
+	if err := chownToRealUser(tmpFile); err != nil {
+		t.Errorf("with current uid/gid: %v", err)
+	}
+
+	// Invalid SUDO_UID — should error
+	t.Setenv("SUDO_UID", "not-a-number")
+	if err := chownToRealUser(tmpFile); err == nil {
+		t.Error("expected error for invalid SUDO_UID")
+	}
+
+	// Empty SUDO_GID — should be no-op
+	t.Setenv("SUDO_UID", "1000")
+	t.Setenv("SUDO_GID", "")
+	if err := chownToRealUser(tmpFile); err != nil {
+		t.Errorf("with empty SUDO_GID: %v", err)
+	}
+}
+
+func TestImportChownRestoresOwnership(t *testing.T) {
+	tmpDir := t.TempDir()
+	confPath := filepath.Join(tmpDir, "test.conf")
+	config := `[Interface]
+PrivateKey = abc123=
+[Peer]
+PublicKey = def456=
+Endpoint = 1.2.3.4:51820
+AllowedIPs = 0.0.0.0/0
+`
+	if err := os.WriteFile(confPath, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("OC_VPN_PROFILES_DIR", tmpDir)
+
+	// Simulate sudo by setting SUDO_UID/SUDO_GID to current user.
+	// The test runs as a normal user, so chown to self must succeed.
+	t.Setenv("SUDO_UID", fmt.Sprintf("%d", os.Getuid()))
+	t.Setenv("SUDO_GID", fmt.Sprintf("%d", os.Getgid()))
+
+	if err := Import(confPath, "chown-test"); err != nil {
+		t.Fatalf("Import() with SUDO_UID/SUDO_GID set: %v", err)
+	}
+
+	p := Get("chown-test")
+	if p == nil {
+		t.Fatal("Get() returned nil for imported profile")
+	}
+
+	// Verify all three paths exist
+	for name, path := range map[string]string{
+		"dir":  p.Dir,
+		"conf": p.ConfPath,
+		"meta": p.MetaPath,
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("stat %s: %v", name, err)
+		}
 	}
 }

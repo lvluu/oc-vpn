@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -177,6 +178,17 @@ func Import(confPath, name string, extraFlags ...string) error {
 		return fmt.Errorf("writing metadata: %w", err)
 	}
 
+	// Restore ownership to real user when running under sudo
+	if err := chownToRealUser(dir); err != nil {
+		return fmt.Errorf("chown profile dir: %w", err)
+	}
+	if err := chownToRealUser(confDest); err != nil {
+		return fmt.Errorf("chown config: %w", err)
+	}
+	if err := chownToRealUser(filepath.Join(dir, "meta.json")); err != nil {
+		return fmt.Errorf("chown metadata: %w", err)
+	}
+
 	return nil
 }
 
@@ -329,4 +341,23 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return os.WriteFile(dst, data, 0o644)
+}
+
+// chownToRealUser restores file ownership to the real user when running under
+// sudo. It reads SUDO_UID/SUDO_GID env vars set automatically by sudo.
+func chownToRealUser(path string) error {
+	uidStr := os.Getenv("SUDO_UID")
+	gidStr := os.Getenv("SUDO_GID")
+	if uidStr == "" || gidStr == "" {
+		return nil
+	}
+	uid, err := strconv.Atoi(uidStr)
+	if err != nil {
+		return err
+	}
+	gid, err := strconv.Atoi(gidStr)
+	if err != nil {
+		return err
+	}
+	return os.Chown(path, uid, gid)
 }
