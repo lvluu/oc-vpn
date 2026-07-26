@@ -22,6 +22,12 @@ type pickModel struct {
 	choices   []string
 	cursor    int
 	cancelled bool
+	title     string
+	titleFn   func() string
+}
+
+type pickConfig struct {
+	title string
 }
 
 func (m pickModel) Init() tea.Cmd { return nil }
@@ -53,7 +59,11 @@ func (m pickModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m pickModel) View() string {
-	s := "\n  " + titleStyle.Render("Select profile:") + "\n\n"
+	title := "Select profile:"
+	if m.title != "" {
+		title = m.title
+	}
+	s := "\n  " + titleStyle.Render(title) + "\n\n"
 
 	for i, choice := range m.choices {
 		if i == m.cursor {
@@ -72,7 +82,12 @@ func (m pickModel) View() string {
 }
 
 func pickProfileBubbletea(names []string) (string, error) {
-	p := tea.NewProgram(pickModel{choices: names})
+	return PickGeneric("Select profile:", names)
+}
+
+// PickGeneric shows a bubbletea picker with the given choices.
+func PickGeneric(title string, choices []string) (string, error) {
+	p := tea.NewProgram(pickModel{choices: choices, title: title})
 	m, err := p.Run()
 	if err != nil {
 		return "", fmt.Errorf("TUI error: %w", err)

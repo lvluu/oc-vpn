@@ -17,6 +17,7 @@ import (
 	"github.com/lvluu/oc-vpn/internal/profiles"
 	"github.com/lvluu/oc-vpn/internal/tui"
 	"github.com/lvluu/oc-vpn/internal/wireguard"
+	"github.com/lvluu/oc-vpn/internal/worktree"
 )
 
 var exitCode int
@@ -32,7 +33,7 @@ func main() {
 
 	// Ensure root for commands that need it
 	needRoot := map[string]bool{
-		"up": true, "down": true, "shell": true, "import": true, "export": true, "remove": true,
+		"up": true, "down": true, "shell": true, "import": true, "export": true, "remove": true, "worktree": true,
 	}
 	if needRoot[cmd] && os.Getuid() != 0 {
 		fmt.Fprintf(os.Stderr, "Error: command '%s' requires root privileges. Run with sudo.\n", cmd)
@@ -68,6 +69,8 @@ func main() {
 		cmdConfig(args)
 	case "default":
 		cmdDefault(args)
+	case "worktree", "wt":
+		cmdWorktree(args)
 	case "version", "-v", "--version":
 		fmt.Printf("oc-vpn %s %s (%s)\n%s/%s\n", version, commit, date, runtime.GOOS, runtime.GOARCH)
 	case "help", "-h", "--help":
@@ -115,6 +118,11 @@ Flags:
   --address <cidr>                Override interface address (import)
   -y, --yes                       Skip confirmation prompts
   --down-on-exit                  Tear down tunnel when command/shell exits (run, shell)
+
+Worktree commands:
+  worktree list | ls              List profiles with linked worktrees
+  worktree add <dir> -p <profile> Link a project directory to a profile
+  worktree remove <dir>           Remove a project link
 
 Examples:
   oc-vpn import config.conf -n us-east
@@ -306,18 +314,34 @@ loop:
 		}
 	}
 	if name == "" {
+		groups, err := worktree.ByProfile()
+		if err == nil && len(groups) > 0 {
+			choices := worktree.ProfileChoices(groups)
+			picked, pickErr := tui.PickGeneric("Select profile:", choices)
+			if pickErr != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", pickErr)
+				os.Exit(1)
+			}
+			// Extract profile name from display string (before the first space)
+			name = picked
+			if idx := strings.Index(name, " "); idx != -1 {
+				name = name[:idx]
+			}
+		}
+	}
+	if name == "" {
 		var err error
 		name, err = tui.PickProfile()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-		if len(cmd) == 0 {
-			cmd = []string{"opencode"}
-		}
-	} else if len(cmd) == 0 {
+	}
+	if len(cmd) == 0 {
 		cmd = []string{"opencode"}
 	}
+
+	broughtUp := false
 
 	// Handle Ctrl+C gracefully
 	sigChan := make(chan os.Signal, 1)
@@ -325,9 +349,13 @@ loop:
 	go func() {
 		<-sigChan
 		fmt.Fprintf(os.Stderr, "\nInterrupted.\n")
-		if downOnExit {
-			fmt.Fprintf(os.Stderr, "Tearing down %s...\n", name)
-			wireguard.Down(name)
+		if downOnExit && broughtUp {
+			if promptConfirm(fmt.Sprintf("Tear down tunnel '%s'?", name)) {
+				fmt.Fprintf(os.Stderr, "Tearing down %s...\n", name)
+				wireguard.Down(name)
+			} else {
+				fmt.Fprintf(os.Stderr, "Tunnel %s left running. Use: oc-vpn down %s\n", name, name)
+			}
 		}
 		os.Exit(0)
 	}()
@@ -338,6 +366,7 @@ loop:
 			exitCode = 1
 			return
 		}
+		broughtUp = true
 		if err := wireguard.WaitForHandshake(name, 15*time.Second); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
 		} else if publicIP, err := wireguard.CheckConnectivity(name); err == nil {
@@ -350,10 +379,21 @@ loop:
 		exitCode = 1
 	}
 
-	if downOnExit {
-		fmt.Fprintf(os.Stderr, "\nTearing down %s...\n", name)
-		wireguard.Down(name)
+	if downOnExit && broughtUp {
+		if promptConfirm(fmt.Sprintf("Tear down tunnel '%s'?", name)) {
+			fmt.Fprintf(os.Stderr, "\nTearing down %s...\n", name)
+			wireguard.Down(name)
+		} else {
+			fmt.Fprintf(os.Stderr, "\nTunnel %s left running. Use: oc-vpn down %s\n", name, name)
+		}
 	}
+}
+
+func promptConfirm(msg string) bool {
+	fmt.Printf("%s [y/N]: ", msg)
+	var input string
+	_, _ = fmt.Scanln(&input)
+	return input == "y" || input == "Y"
 }
 
 func cmdShell(args []string) {
@@ -481,6 +521,116 @@ func cmdExport(args []string) {
 	if cfg.Address != "" {
 		fmt.Printf("Address:     %s\n", cfg.Address)
 	}
+}
+
+func cmdWorktree(args []string) {
+	if len(args) == 0 {
+		printWorktreeUsage()
+		os.Exit(1)
+	}
+
+	sub := args[0]
+	subArgs := args[1:]
+
+	switch sub {
+	case "list", "ls":
+		cmdWorktreeList(subArgs)
+	case "add":
+		cmdWorktreeAdd(subArgs)
+	case "remove", "rm":
+		cmdWorktreeRemove(subArgs)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown worktree subcommand: %s\n", sub)
+		printWorktreeUsage()
+		os.Exit(1)
+	}
+}
+
+func printWorktreeUsage() {
+	fmt.Fprintln(os.Stderr, `Usage:
+  worktree list                     List profiles with linked worktrees
+  worktree add <dir> -p <profile>   Link a project directory to a profile
+  worktree remove <dir>             Remove a project link`)
+}
+
+func cmdWorktreeList(_ []string) {
+	groups, err := worktree.ByProfile()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if len(groups) == 0 {
+		fmt.Println("No profiles.")
+		return
+	}
+	fmt.Println("Worktrees:")
+	fmt.Print(worktree.FormatAll(groups))
+}
+
+func cmdWorktreeAdd(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: oc-vpn worktree add <dir> -p <profile>")
+		os.Exit(1)
+	}
+
+	projectDir := args[0]
+	profile := ""
+
+	for i := 1; i < len(args); i++ {
+		if args[i] == "-p" || args[i] == "--profile" {
+			if i+1 < len(args) {
+				profile = args[i+1]
+				i++
+			}
+		}
+	}
+
+	if profile == "" {
+		fmt.Fprintln(os.Stderr, "Error: profile required (-p <name>)")
+		os.Exit(1)
+	}
+	if !profiles.Exists(profile) {
+		fmt.Fprintf(os.Stderr, "Error: profile '%s' not found\n", profile)
+		os.Exit(1)
+	}
+
+	inv, err := worktree.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := inv.Add(projectDir, profile); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if err := inv.Save(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error saving worktrees: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ Linked %s → %s\n", projectDir, profile)
+}
+
+func cmdWorktreeRemove(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: oc-vpn worktree remove <dir>")
+		os.Exit(1)
+	}
+
+	projectDir := args[0]
+	inv, err := worktree.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	if !inv.Remove(projectDir) {
+		fmt.Fprintf(os.Stderr, "Error: no worktree found for %s\n", projectDir)
+		os.Exit(1)
+	}
+	if err := inv.Save(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error saving worktrees: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("✓ Removed worktree for %s\n", projectDir)
 }
 
 func cmdRemove(args []string) {
